@@ -1,0 +1,20 @@
+# Entities
+
+- User
+- Vendor
+- VendorProfile
+- Product
+- ProductImage
+- ProductVariant
+- Category
+- Cart
+- CartItem
+- Order
+- OrderItem
+- Payment
+- Refund
+- Review
+- Wishlist
+- Address
+- Payout
+- Commission
