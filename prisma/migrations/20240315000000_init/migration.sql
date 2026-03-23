@@ -19,7 +19,7 @@ CREATE TABLE "User" (
     "email" TEXT NOT NULL,
     "password_hash" TEXT NOT NULL,
     "role" "UserRole" NOT NULL DEFAULT 'CUSTOMER',
-    "email_verified" BOOLEAN DEFAULT false,
+    "email_verified" BOOLEAN NOT NULL DEFAULT false,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMP(3) NOT NULL,
 
@@ -202,6 +202,7 @@ CREATE INDEX "ProductImage_product_id_idx" ON "ProductImage"("product_id");
 CREATE INDEX "ProductVariant_product_id_idx" ON "ProductVariant"("product_id");
 
 -- CreateIndex
+-- Note: NULL skus are not equal in Postgres unique indexes; multiple NULL skus per productId are allowed unless enforced in app code.
 CREATE UNIQUE INDEX "ProductVariant_product_id_sku_key" ON "ProductVariant"("product_id", "sku");
 
 -- CreateIndex
@@ -262,7 +263,7 @@ ALTER TABLE "OrderItem" ADD CONSTRAINT "OrderItem_product_variant_id_fkey" FOREI
 ALTER TABLE "OrderItem" ADD CONSTRAINT "OrderItem_vendor_id_fkey" FOREIGN KEY ("vendor_id") REFERENCES "Vendor"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "Commission" ADD CONSTRAINT "Commission_order_id_fkey" FOREIGN KEY ("order_id") REFERENCES "Order"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "Commission" ADD CONSTRAINT "Commission_order_id_fkey" FOREIGN KEY ("order_id") REFERENCES "Order"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "Commission" ADD CONSTRAINT "Commission_vendor_id_fkey" FOREIGN KEY ("vendor_id") REFERENCES "Vendor"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE "Commission" ADD CONSTRAINT "Commission_vendor_id_fkey" FOREIGN KEY ("vendor_id") REFERENCES "Vendor"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
