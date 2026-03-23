@@ -1,7 +1,8 @@
-// BazaarLink — Phase 1 Prisma schema (MVP subset per docs).
+// BazaarLink — MVP subset schema (per docs; not the full domain model).
 // Source: docs/database/schema-detailed.md, docs/database/enums.md,
 // docs/implementation/phase1-plan.md, docs/architecture/open-decisions.md
-// Omitted until later: Cart, CartItem, Payment, Refund, Payout, Review, Wishlist.
+// Deferred (intentionally omitted from Prisma for now): Cart, CartItem, Payment,
+// Refund, Payout, Review. Wishlist also omitted.
 
 generator client {
   provider = "prisma-client-js"
@@ -52,7 +53,7 @@ model User {
   email         String    @unique
   passwordHash  String    @map("password_hash")
   role          UserRole  @default(CUSTOMER)
-  emailVerified Boolean?  @map("email_verified") @default(false)
+  emailVerified Boolean   @map("email_verified") @default(false)
   createdAt     DateTime  @default(now()) @map("created_at")
   updatedAt     DateTime  @updatedAt @map("updated_at")
 
@@ -171,6 +172,8 @@ model ProductVariant {
   product    Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
   orderItems OrderItem[]
 
+  // Postgres treats NULL as distinct in unique indexes: multiple rows may share
+  // (productId, sku) when sku IS NULL. Enforce non-null SKU or app-level rules as needed.
   @@unique([productId, sku])
   @@index([productId])
 }
@@ -223,8 +226,8 @@ model Commission {
   percentage Decimal  @db.Decimal(5, 2)
   createdAt  DateTime @default(now()) @map("created_at")
 
-  order  Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  vendor Vendor @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  order  Order  @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  vendor Vendor @relation(fields: [vendorId], references: [id], onDelete: Restrict)
 
   @@index([orderId])
   @@index([vendorId])
