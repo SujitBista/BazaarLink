@@ -1,0 +1,231 @@
+// BazaarLink — Phase 1 Prisma schema (MVP subset per docs).
+// Source: docs/database/schema-detailed.md, docs/database/enums.md,
+// docs/implementation/phase1-plan.md, docs/architecture/open-decisions.md
+// Omitted until later: Cart, CartItem, Payment, Refund, Payout, Review, Wishlist.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  CUSTOMER
+  VENDOR
+  ADMIN
+}
+
+enum VendorStatus {
+  PENDING
+  APPROVED
+  SUSPENDED
+}
+
+enum ProductStatus {
+  DRAFT
+  ACTIVE
+}
+
+enum OrderStatus {
+  PENDING
+  PAID
+  PROCESSING
+  SHIPPED
+  DELIVERED
+  CANCELLED
+}
+
+enum OrderItemStatus {
+  PENDING
+  CONFIRMED
+  SHIPPED
+  DELIVERED
+  CANCELLED
+  REFUNDED
+}
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  passwordHash  String    @map("password_hash")
+  role          UserRole  @default(CUSTOMER)
+  emailVerified Boolean?  @map("email_verified") @default(false)
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  vendor    Vendor?
+  addresses Address[]
+  orders    Order[]
+}
+
+model Vendor {
+  id         String       @id @default(cuid())
+  userId     String       @unique @map("user_id")
+  status     VendorStatus @default(PENDING)
+  approvedAt DateTime?    @map("approved_at")
+  approvedBy String?      @map("approved_by")
+  createdAt  DateTime     @default(now()) @map("created_at")
+  updatedAt  DateTime     @updatedAt @map("updated_at")
+
+  user       User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  profile    VendorProfile?
+  products    Product[]
+  orderItems  OrderItem[]
+  commissions Commission[]
+}
+
+model VendorProfile {
+  id           String   @id @default(cuid())
+  vendorId     String   @unique @map("vendor_id")
+  businessName String   @map("business_name")
+  documentUrl  String?  @map("document_url")
+  contactEmail String?  @map("contact_email")
+  contactPhone String?  @map("contact_phone")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  vendor Vendor @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+}
+
+model Address {
+  id         String   @id @default(cuid())
+  userId     String   @map("user_id")
+  label      String?
+  line1      String
+  line2      String?
+  city       String
+  state      String?
+  postalCode String   @map("postal_code")
+  country    String
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orders Order[] @relation("ShippingAddress")
+
+  @@index([userId])
+}
+
+model Category {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  parentId  String?  @map("parent_id")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  parent   Category?  @relation("CategoryTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children Category[] @relation("CategoryTree")
+  products Product[]
+
+  @@index([parentId])
+}
+
+model Product {
+  id          String        @id @default(cuid())
+  vendorId    String        @map("vendor_id")
+  categoryId  String        @map("category_id")
+  name        String
+  slug        String
+  description String?
+  status      ProductStatus @default(DRAFT)
+  createdAt   DateTime      @default(now()) @map("created_at")
+  updatedAt   DateTime      @updatedAt @map("updated_at")
+
+  vendor   Vendor           @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  category Category         @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  images   ProductImage[]
+  variants ProductVariant[]
+
+  @@unique([vendorId, slug])
+  @@index([vendorId])
+  @@index([categoryId])
+  @@index([status])
+}
+
+model ProductImage {
+  id        String   @id @default(cuid())
+  productId String   @map("product_id")
+  url       String
+  sortOrder Int      @default(0) @map("sort_order")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId])
+}
+
+model ProductVariant {
+  id         String   @id @default(cuid())
+  productId  String   @map("product_id")
+  sku        String?
+  price      Decimal  @db.Decimal(10, 2)
+  stock      Int      @default(0)
+  attributes Json?
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  product    Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
+  orderItems OrderItem[]
+
+  @@unique([productId, sku])
+  @@index([productId])
+}
+
+model Order {
+  id                  String      @id @default(cuid())
+  userId              String      @map("user_id")
+  status              OrderStatus @default(PENDING)
+  subtotalAmount      Decimal?    @map("subtotal_amount") @db.Decimal(10, 2)
+  shippingAmount      Decimal?    @map("shipping_amount") @db.Decimal(10, 2)
+  shippingMethod      String?     @map("shipping_method")
+  totalAmount         Decimal     @map("total_amount") @db.Decimal(10, 2)
+  shippingAddressId   String      @map("shipping_address_id")
+  createdAt           DateTime    @default(now()) @map("created_at")
+  updatedAt           DateTime    @updatedAt @map("updated_at")
+
+  user            User    @relation(fields: [userId], references: [id], onDelete: Restrict)
+  shippingAddress Address @relation("ShippingAddress", fields: [shippingAddressId], references: [id], onDelete: Restrict)
+  items           OrderItem[]
+  commissions     Commission[]
+
+  @@index([userId])
+  @@index([status])
+}
+
+model OrderItem {
+  id               String          @id @default(cuid())
+  orderId          String          @map("order_id")
+  productVariantId String          @map("product_variant_id")
+  vendorId         String          @map("vendor_id")
+  quantity         Int
+  price            Decimal         @db.Decimal(10, 2)
+  status           OrderItemStatus @default(PENDING)
+  createdAt        DateTime        @default(now()) @map("created_at")
+  updatedAt        DateTime        @updatedAt @map("updated_at")
+
+  order          Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productVariant ProductVariant @relation(fields: [productVariantId], references: [id], onDelete: Restrict)
+  vendor         Vendor         @relation(fields: [vendorId], references: [id], onDelete: Restrict)
+
+  @@index([orderId])
+  @@index([vendorId])
+}
+
+model Commission {
+  id         String   @id @default(cuid())
+  orderId    String   @map("order_id")
+  vendorId   String   @map("vendor_id")
+  amount     Decimal  @db.Decimal(10, 2)
+  percentage Decimal  @db.Decimal(5, 2)
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  order  Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  vendor Vendor @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+  @@index([vendorId])
+}
