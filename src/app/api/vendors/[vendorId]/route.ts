@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { getSession } from "@/lib/auth/session";
-import { requireRole } from "@/lib/auth/role";
+import { requireVendor } from "@/lib/auth/rbac";
 import { updateVendorProfile } from "@/services/vendor";
 import { updateVendorProfileSchema } from "@/lib/validations/vendor";
 import { prisma } from "@/lib/db";
@@ -10,8 +9,7 @@ export async function GET(
   { params }: { params: Promise<{ vendorId: string }> }
 ) {
   try {
-    const user = await getSession();
-    requireRole(user, "VENDOR");
+    const user = await requireVendor();
     const { vendorId } = await params;
     const vendor = await prisma.vendor.findFirst({
       where: { id: vendorId, userId: user.id },
@@ -33,8 +31,7 @@ export async function PATCH(
   { params }: { params: Promise<{ vendorId: string }> }
 ) {
   try {
-    const user = await getSession();
-    requireRole(user, "VENDOR");
+    const user = await requireVendor();
     const { vendorId } = await params;
     const body = await request.json();
     const parsed = updateVendorProfileSchema.safeParse(body);

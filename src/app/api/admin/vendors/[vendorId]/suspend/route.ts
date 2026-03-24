@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { getSession } from "@/lib/auth/session";
-import { requireRole } from "@/lib/auth/role";
+import { requireAdmin } from "@/lib/auth/rbac";
 import { suspendVendor } from "@/services/vendor";
 
 export async function POST(
@@ -8,8 +7,7 @@ export async function POST(
   { params }: { params: Promise<{ vendorId: string }> }
 ) {
   try {
-    const user = await getSession();
-    requireRole(user, "ADMIN");
+    await requireAdmin();
     const { vendorId } = await params;
     const vendor = await suspendVendor(vendorId);
     return NextResponse.json({ vendor });

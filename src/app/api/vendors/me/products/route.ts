@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { getSession } from "@/lib/auth/session";
-import { requireRole } from "@/lib/auth/role";
+import { requireApprovedVendor, requireVendor } from "@/lib/auth/rbac";
 import { getVendorByUserId } from "@/services/vendor";
 import { listProductsByVendor } from "@/services/catalog";
 import { createProduct } from "@/services/catalog";
@@ -8,8 +7,7 @@ import { createProductSchema } from "@/lib/validations/catalog";
 
 export async function GET() {
   try {
-    const user = await getSession();
-    requireRole(user, "VENDOR");
+    const user = await requireVendor();
     const vendor = await getVendorByUserId(user.id);
     if (!vendor) {
       return NextResponse.json({ error: "Vendor profile not found. Register as vendor first." }, { status: 404 });
@@ -25,12 +23,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const user = await getSession();
-    requireRole(user, "VENDOR");
-    const vendor = await getVendorByUserId(user.id);
-    if (!vendor) {
-      return NextResponse.json({ error: "Vendor profile not found. Register as vendor first." }, { status: 404 });
-    }
+    const { user, vendor } = await requireApprovedVendor();
     const body = await request.json();
     const parsed = createProductSchema.safeParse(body);
     if (!parsed.success) {

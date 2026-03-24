@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { getSession } from "@/lib/auth/session";
-import { requireRole } from "@/lib/auth/role";
+import { requireApprovedVendor, requireVendor } from "@/lib/auth/rbac";
 import { getVendorByUserId } from "@/services/vendor";
 import { updateProduct, deleteProduct, getProductById } from "@/services/catalog";
 import { updateProductSchema } from "@/lib/validations/catalog";
@@ -10,12 +9,7 @@ export async function PATCH(
   { params }: { params: Promise<{ productId: string }> }
 ) {
   try {
-    const user = await getSession();
-    requireRole(user, "VENDOR");
-    const vendor = await getVendorByUserId(user.id);
-    if (!vendor) {
-      return NextResponse.json({ error: "Vendor profile not found." }, { status: 404 });
-    }
+    const { user, vendor } = await requireApprovedVendor();
     const { productId } = await params;
     const body = await request.json();
     const parsed = updateProductSchema.safeParse(body);
@@ -39,12 +33,7 @@ export async function DELETE(
   { params }: { params: Promise<{ productId: string }> }
 ) {
   try {
-    const user = await getSession();
-    requireRole(user, "VENDOR");
-    const vendor = await getVendorByUserId(user.id);
-    if (!vendor) {
-      return NextResponse.json({ error: "Vendor profile not found." }, { status: 404 });
-    }
+    const { user, vendor } = await requireApprovedVendor();
     const { productId } = await params;
     await deleteProduct(productId, vendor.id, user.id);
     return NextResponse.json({ ok: true });
@@ -60,8 +49,7 @@ export async function GET(
   { params }: { params: Promise<{ productId: string }> }
 ) {
   try {
-    const user = await getSession();
-    requireRole(user, "VENDOR");
+    const user = await requireVendor();
     const vendor = await getVendorByUserId(user.id);
     if (!vendor) {
       return NextResponse.json({ error: "Vendor profile not found." }, { status: 404 });

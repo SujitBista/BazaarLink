@@ -1,13 +1,11 @@
 import { NextResponse } from "next/server";
-import { getSession } from "@/lib/auth/session";
-import { requireRole } from "@/lib/auth/role";
+import { requireAdmin } from "@/lib/auth/rbac";
 import { createCategory, listCategories } from "@/services/catalog";
 import { createCategorySchema } from "@/lib/validations/catalog";
 
 export async function GET() {
   try {
-    const user = await getSession();
-    requireRole(user, "ADMIN");
+    await requireAdmin();
     const categories = await listCategories();
     return NextResponse.json({ categories });
   } catch (e) {
@@ -19,8 +17,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const user = await getSession();
-    requireRole(user, "ADMIN");
+    await requireAdmin();
     const body = await request.json();
     const parsed = createCategorySchema.safeParse(body);
     if (!parsed.success) {

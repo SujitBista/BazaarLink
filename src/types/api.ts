@@ -4,6 +4,7 @@ export interface SessionUser {
   id: string;
   email: string;
   role: UserRole;
+  emailVerified: boolean;
 }
 
 export interface ApiError {

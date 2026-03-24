@@ -1,12 +1,12 @@
 import { z } from "zod";
-import { UserRole } from "@/types/enums";
-
-const roleEnum = z.enum(["CUSTOMER", "VENDOR", "ADMIN"]);
 
 export const signupSchema = z.object({
   email: z.string().email(),
-  password: z.string().min(8, "Password must be at least 8 characters"),
-  role: roleEnum.default("CUSTOMER"),
+  password: z
+    .string()
+    .min(8, "Password must be at least 8 characters")
+    .regex(/[A-Za-z]/, "Password must include a letter")
+    .regex(/[0-9]/, "Password must include a number"),
 });
 
 export const loginSchema = z.object({
