@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { getSession } from "@/lib/auth/session";
-import { requireRole } from "@/lib/auth/role";
+import { requireAdmin } from "@/lib/auth/rbac";
 import { updateCategory, deleteCategory, getCategoryById } from "@/services/catalog";
 import { updateCategorySchema } from "@/lib/validations/catalog";
 
@@ -9,8 +8,7 @@ export async function GET(
   { params }: { params: Promise<{ categoryId: string }> }
 ) {
   try {
-    const user = await getSession();
-    requireRole(user, "ADMIN");
+    await requireAdmin();
     const { categoryId } = await params;
     const category = await getCategoryById(categoryId);
     if (!category) {
@@ -29,8 +27,7 @@ export async function PATCH(
   { params }: { params: Promise<{ categoryId: string }> }
 ) {
   try {
-    const user = await getSession();
-    requireRole(user, "ADMIN");
+    await requireAdmin();
     const { categoryId } = await params;
     const body = await request.json();
     const parsed = updateCategorySchema.safeParse(body);
@@ -54,8 +51,7 @@ export async function DELETE(
   { params }: { params: Promise<{ categoryId: string }> }
 ) {
   try {
-    const user = await getSession();
-    requireRole(user, "ADMIN");
+    await requireAdmin();
     const { categoryId } = await params;
     await deleteCategory(categoryId);
     return NextResponse.json({ ok: true });

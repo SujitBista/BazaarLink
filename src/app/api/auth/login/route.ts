@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { loginWithSession } from "@/services/auth";
+import { AUTH_ERROR_INVALID_CREDENTIALS, loginWithSession } from "@/services/auth";
 import { loginSchema } from "@/lib/validations/auth";
 
 export async function POST(request: Request) {
@@ -17,6 +17,7 @@ export async function POST(request: Request) {
   } catch (e) {
     const err = e as Error & { statusCode?: number };
     const status = err.statusCode ?? 500;
-    return NextResponse.json({ error: err.message ?? "Login failed" }, { status });
+    const message = status === 401 ? AUTH_ERROR_INVALID_CREDENTIALS : err.message ?? "Login failed";
+    return NextResponse.json({ error: message }, { status });
   }
 }

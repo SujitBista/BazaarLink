@@ -1,12 +1,10 @@
 import { NextResponse } from "next/server";
-import { getSession } from "@/lib/auth/session";
-import { requireRole } from "@/lib/auth/role";
+import { requireVendor } from "@/lib/auth/rbac";
 import { getVendorByUserId } from "@/services/vendor";
 
 export async function GET() {
   try {
-    const user = await getSession();
-    requireRole(user, "VENDOR");
+    const user = await requireVendor();
     const vendor = await getVendorByUserId(user.id);
     if (!vendor) {
       return NextResponse.json({ vendor: null }, { status: 200 });

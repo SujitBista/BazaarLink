@@ -1,13 +1,11 @@
 import { NextResponse } from "next/server";
-import { getSession } from "@/lib/auth/session";
-import { requireRole } from "@/lib/auth/role";
+import { requireVendor } from "@/lib/auth/rbac";
 import { registerVendor } from "@/services/vendor";
 import { registerVendorSchema } from "@/lib/validations/vendor";
 
 export async function POST(request: Request) {
   try {
-    const user = await getSession();
-    requireRole(user, "VENDOR");
+    const user = await requireVendor();
     const body = await request.json();
     const parsed = registerVendorSchema.safeParse(body);
     if (!parsed.success) {

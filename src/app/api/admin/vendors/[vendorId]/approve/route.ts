@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { getSession } from "@/lib/auth/session";
-import { requireRole } from "@/lib/auth/role";
+import { requireAdmin } from "@/lib/auth/rbac";
 import { approveVendor } from "@/services/vendor";
 
 export async function POST(
@@ -8,10 +7,9 @@ export async function POST(
   { params }: { params: Promise<{ vendorId: string }> }
 ) {
   try {
-    const user = await getSession();
-    requireRole(user, "ADMIN");
+    const user = await requireAdmin();
     const { vendorId } = await params;
-    const vendor = await approveVendor(vendorId, user!.id);
+    const vendor = await approveVendor(vendorId, user.id);
     return NextResponse.json({ vendor });
   } catch (e) {
     const err = e as Error & { statusCode?: number };
