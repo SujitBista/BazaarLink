@@ -47,7 +47,7 @@ Multi-vendor ecommerce marketplace. Phase 1: authentication, roles, vendor onboa
 ## Roles & flows
 
 - **Customer:** signup → browse products, cart, checkout (later).
-- **Vendor:** signup with role `VENDOR` → POST `/api/vendors/register` (business profile + document URL) → admin approves → create products (DRAFT/ACTIVE). Only APPROVED vendors can list ACTIVE products.
+- **Vendor:** authenticated + verified user submits onboarding via POST `/api/vendors/register` (or `/api/vendors/onboarding`) with business profile + document URL → admin approves → create products (DRAFT/ACTIVE). Only APPROVED vendors can list ACTIVE products.
 - **Admin:** approve/suspend vendors, manage categories, manage products (later).
 
 ## API overview
@@ -55,7 +55,7 @@ Multi-vendor ecommerce marketplace. Phase 1: authentication, roles, vendor onboa
 | Area        | Endpoints |
 |------------|-----------|
 | Auth       | `POST /api/auth/signup`, `POST /api/auth/login`, `POST /api/auth/logout`, `GET /api/auth/me` |
-| Vendors    | `POST /api/vendors/register`, `GET /api/vendors/me`, `GET/PATCH /api/vendors/[id]` |
+| Vendors    | `POST /api/vendors/register` (or `POST /api/vendors/onboarding`), `GET /api/vendors/me`, `GET/PATCH /api/vendors/[id]` |
 | Admin      | `GET /api/admin/vendors`, `POST /api/admin/vendors/[id]/approve`, `POST /api/admin/vendors/[id]/suspend`, category CRUD under `/api/admin/categories` |
 | Catalog    | `GET /api/categories`, `GET /api/categories/[slug]`, `GET /api/products`, `GET /api/products/[id]` |
 | Vendor catalog | `GET/POST /api/vendors/me/products`, `GET/PATCH/DELETE /api/vendors/me/products/[id]` |

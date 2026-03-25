@@ -8,7 +8,8 @@ export default function HomePage() {
         <li>POST /api/auth/login – login</li>
         <li>POST /api/auth/logout – logout</li>
         <li>GET /api/auth/me – current session</li>
-        <li>POST /api/vendors/register – register as vendor (VENDOR role required)</li>
+        <li>POST /api/vendors/register – submit vendor onboarding (auth + verified email)</li>
+        <li>POST /api/vendors/onboarding – alias for vendor onboarding submission</li>
         <li>GET /api/vendors/me – my vendor profile</li>
         <li>GET/PATCH /api/vendors/[vendorId] – get/update vendor (owner)</li>
         <li>GET /api/admin/vendors – list vendors (ADMIN)</li>

@@ -9,6 +9,7 @@ export async function POST(request: Request) {
     const user = await requireAuth();
     const body = await request.json();
     const parsed = registerVendorSchema.safeParse(body);
+
     if (!parsed.success) {
       return NextResponse.json(
         {
@@ -19,6 +20,7 @@ export async function POST(request: Request) {
         { status: 400 }
       );
     }
+
     const vendor = await submitVendorOnboarding(user.id, parsed.data);
 
     // Refresh session so CUSTOMER -> VENDOR role changes apply immediately.
