@@ -179,33 +179,70 @@ export async function listPendingVendors() {
 }
 
 export async function approveVendor(vendorId: string, adminUserId: string) {
-  const vendor = await prisma.vendor.findUnique({ where: { id: vendorId } });
+  const vendor = await prisma.vendor.findUnique({
+    where: { id: vendorId },
+    include: { profile: true, user: { select: { id: true, email: true, role: true } } },
+  });
   if (!vendor) {
     throw createServiceError("Vendor not found", 404, "VENDOR_NOT_FOUND");
   }
-  if (vendor.status !== VendorStatus.PENDING) {
-    throw createServiceError("Vendor is not pending approval", 400, "INVALID_VENDOR_STATE");
+
+  // Idempotency: approving an already-approved vendor is a safe no-op.
+  if (vendor.status === VendorStatus.APPROVED) {
+    return vendor;
   }
-  return prisma.vendor.update({
-    where: { id: vendorId },
-    data: {
-      status: VendorStatus.APPROVED,
-      approvedAt: new Date(),
-      approvedBy: adminUserId,
-    },
-    include: { profile: true, user: { select: { email: true } } },
+
+  // Business rules: allow approval from PENDING (and reinstatement from SUSPENDED).
+  if (vendor.status !== VendorStatus.PENDING && vendor.status !== VendorStatus.SUSPENDED) {
+    throw createServiceError("Vendor cannot be approved from current status", 409, "INVALID_VENDOR_STATE");
+  }
+
+  const updated = await prisma.$transaction(async (tx) => {
+    // Ensure the owning user ends up with VENDOR role (no escalation beyond that).
+    if (vendor.user.role !== UserRole.VENDOR) {
+      await tx.user.update({
+        where: { id: vendor.userId },
+        data: { role: UserRole.VENDOR },
+      });
+    }
+
+    return tx.vendor.update({
+      where: { id: vendorId },
+      data: {
+        status: VendorStatus.APPROVED,
+        approvedAt: new Date(),
+        approvedBy: adminUserId,
+      },
+      include: { profile: true, user: { select: { id: true, email: true, role: true } } },
+    });
   });
+
+  return updated;
 }
 
 export async function suspendVendor(vendorId: string) {
-  const vendor = await prisma.vendor.findUnique({ where: { id: vendorId } });
+  const vendor = await prisma.vendor.findUnique({
+    where: { id: vendorId },
+    include: { profile: true, user: { select: { id: true, email: true } } },
+  });
   if (!vendor) {
     throw createServiceError("Vendor not found", 404, "VENDOR_NOT_FOUND");
   }
+
+  // Idempotency: suspending an already-suspended vendor is a safe no-op.
+  if (vendor.status === VendorStatus.SUSPENDED) {
+    return vendor;
+  }
+
+  // Business rules: allow suspension from PENDING or APPROVED.
+  if (vendor.status !== VendorStatus.PENDING && vendor.status !== VendorStatus.APPROVED) {
+    throw createServiceError("Vendor cannot be suspended from current status", 409, "INVALID_VENDOR_STATE");
+  }
+
   return prisma.vendor.update({
     where: { id: vendorId },
     data: { status: VendorStatus.SUSPENDED },
-    include: { profile: true },
+    include: { profile: true, user: { select: { id: true, email: true } } },
   });
 }
 
