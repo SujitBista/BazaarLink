@@ -25,5 +25,17 @@ export const adminVendorActionSchema = z.object({
   action: z.enum(["approve", "suspend"]),
 });
 
+export const adminListVendorsQuerySchema = z.object({
+  pending: z
+    .enum(["true", "false"])
+    .optional()
+    .transform((v) => v === "true"),
+  status: z.enum(["PENDING", "APPROVED", "SUSPENDED"]).optional(),
+});
+
+export const vendorIdParamSchema = z.object({
+  vendorId: z.string().trim().min(1, "vendorId is required"),
+});
+
 export type RegisterVendorInput = z.infer<typeof registerVendorSchema>;
 export type UpdateVendorProfileInput = z.infer<typeof updateVendorProfileSchema>;
