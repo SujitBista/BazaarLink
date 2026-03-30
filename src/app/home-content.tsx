@@ -27,16 +27,35 @@ export default function HomeContent({ initialQ }: Props) {
 
     void (async () => {
       setLoading(true);
-      const res = await fetch(`/api/products?${params.toString()}`, { credentials: "include" });
-      const json = (await res.json()) as { products?: ProductCardData[]; error?: string };
-      if (cancelled) return;
-      setLoading(false);
-      if (!res.ok) {
-        setError(json.error ?? "Failed to load products");
-        return;
-      }
       setError(null);
-      setProducts(json.products ?? []);
+      try {
+        const res = await fetch(`/api/products?${params.toString()}`, { credentials: "include" });
+        let json: { products?: ProductCardData[]; error?: string } = {};
+        try {
+          json = (await res.json()) as { products?: ProductCardData[]; error?: string };
+        } catch {
+          if (!cancelled) {
+            setError("Invalid response from server.");
+            setProducts([]);
+          }
+          return;
+        }
+        if (cancelled) return;
+        if (!res.ok) {
+          setError(json.error ?? "Failed to load products");
+          setProducts([]);
+          return;
+        }
+        setError(null);
+        setProducts(json.products ?? []);
+      } catch {
+        if (!cancelled) {
+          setError("Could not load products. Check your connection and try again.");
+          setProducts([]);
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
     })();
     return () => {
       cancelled = true;

@@ -7,9 +7,14 @@ function firstString(v: string | string[] | undefined): string {
   return typeof v === "string" ? v : v[0] ?? "";
 }
 
-export default function ShopPage({ searchParams }: { searchParams: Search }) {
+export default async function ShopPage({
+  searchParams,
+}: {
+  searchParams: Search | Promise<Search>;
+}) {
+  const sp = await searchParams;
   const category =
-    firstString(searchParams.category) || firstString(searchParams.categorySlug);
-  const q = firstString(searchParams.q) || firstString(searchParams.search);
+    firstString(sp.category) || firstString(sp.categorySlug);
+  const q = firstString(sp.q) || firstString(sp.search);
   return <ShopBrowse initialCategorySlug={category} initialQ={q} />;
 }

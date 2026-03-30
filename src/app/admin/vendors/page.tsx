@@ -149,8 +149,22 @@ export default function AdminVendorsPage() {
     return (
       <main className="mx-auto max-w-4xl p-8">
         <h1 className="text-xl font-semibold">Admin · Vendors</h1>
-        <p className="mt-3 text-gray-700">Sign in as an administrator to moderate vendors.</p>
-        <a href="/" className="mt-6 inline-block text-sm text-blue-700 underline">
+        <p className="mt-3 text-gray-700">Sign in as an administrator to approve or suspend vendor accounts.</p>
+        <div className="mt-6 flex flex-wrap gap-3">
+          <a
+            href="/admin/login"
+            className="inline-block rounded-md bg-orange-600 px-4 py-2 text-sm font-medium text-white shadow hover:bg-orange-700"
+          >
+            Admin sign in
+          </a>
+          <a
+            href="/login?next=/admin/vendors"
+            className="inline-block rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-800 hover:bg-gray-50"
+          >
+            Sign in (return here)
+          </a>
+        </div>
+        <a href="/" className="mt-6 block text-sm text-gray-600 underline">
           Home
         </a>
       </main>
