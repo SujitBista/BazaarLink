@@ -16,6 +16,8 @@ type VendorProfile = {
   id: string;
   vendorId: string;
   businessName: string;
+  contactEmail: string | null;
+  contactPhone: string | null;
   createdAt: string;
   updatedAt: string;
 } | null;
@@ -48,6 +50,22 @@ export default function VendorOnboardingPage() {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [validationLines, setValidationLines] = useState<string[]>([]);
+  const [resendState, setResendState] = useState<"idle" | "sending" | "sent" | "error">("idle");
+  const [devVerifyUrl, setDevVerifyUrl] = useState<string | null>(null);
+  const [urlFlags, setUrlFlags] = useState<{
+    emailVerified: boolean;
+    verifyError: string | null;
+    checkEmail: boolean;
+  }>({ emailVerified: false, verifyError: null, checkEmail: false });
+
+  useEffect(() => {
+    const sp = new URLSearchParams(window.location.search);
+    setUrlFlags({
+      emailVerified: sp.get("emailVerified") === "1",
+      verifyError: sp.get("verifyError"),
+      checkEmail: sp.get("checkEmail") === "1",
+    });
+  }, []);
 
   const refresh = useCallback(async () => {
     setLoadError(null);
@@ -77,6 +95,10 @@ export default function VendorOnboardingPage() {
     const p = vRes.data.vendor?.profile;
     if (p) {
       setBusinessName(p.businessName);
+      if (p.contactEmail) setContactEmail(p.contactEmail);
+      if (p.contactPhone) setContactPhone(p.contactPhone);
+    } else if (!vRes.data.vendor && meRes.data.user) {
+      setContactEmail((prev) => (prev.trim() ? prev : meRes.data.user!.email));
     }
     setLoading(false);
   }, []);
@@ -84,6 +106,26 @@ export default function VendorOnboardingPage() {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  useEffect(() => {
+    try {
+      const u = sessionStorage.getItem("bazaarlink_dev_email_verify_url");
+      if (u) setDevVerifyUrl(u);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  const resendVerificationEmail = useCallback(async () => {
+    if (!me) return;
+    setResendState("sending");
+    const res = await fetchApiJson<{ ok: boolean }>("/api/auth/verify/request", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: me.email }),
+    });
+    setResendState(res.ok ? "sent" : "error");
+  }, [me]);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -137,27 +179,18 @@ export default function VendorOnboardingPage() {
       <main className="mx-auto max-w-lg p-8">
         <h1 className="text-xl font-semibold">Vendor onboarding</h1>
         <p className="mt-3 text-gray-700">Sign in to submit vendor onboarding.</p>
-        <p className="mt-4 text-sm text-gray-500">
-          There is no sign-in page in this app yet; use{" "}
-          <code className="rounded bg-gray-200 px-1">POST /api/auth/login</code> with your session cookie, then return
-          here.
-        </p>
-        <a href="/" className="mt-6 inline-block text-sm text-blue-700 underline">
-          Home
+        <a
+          href="/vendor/login?next=/vendor/onboarding"
+          className="mt-4 inline-block text-sm font-medium text-orange-700 underline"
+        >
+          Vendor sign in
         </a>
-      </main>
-    );
-  }
-
-  if (!me.emailVerified) {
-    return (
-      <main className="mx-auto max-w-lg p-8">
-        <h1 className="text-xl font-semibold">Vendor onboarding</h1>
-        <p className="mt-3 rounded border border-amber-200 bg-amber-50 p-3 text-gray-800">
-          Your email address must be verified before you can submit vendor onboarding. Check your inbox for a
-          verification link, or use the verification API if your client triggers it.
+        <p className="mt-3 text-sm text-gray-600">
+          New seller?{" "}
+          <a href="/vendor/signup" className="font-medium text-orange-700 underline">
+            Create an account
+          </a>
         </p>
-        <p className="mt-2 text-sm text-gray-600">Signed in as {me.email}</p>
         <a href="/" className="mt-6 inline-block text-sm text-blue-700 underline">
           Home
         </a>
@@ -179,11 +212,60 @@ export default function VendorOnboardingPage() {
 
   const status = vendor?.status;
   const canEdit = !vendor || status === "PENDING";
+  const emailVerifiedJustNow = urlFlags.emailVerified;
 
   return (
     <main className="mx-auto max-w-lg p-8">
-      <h1 className="text-xl font-semibold">Vendor onboarding</h1>
+      <h1 className="text-xl font-semibold text-gray-900">Vendor onboarding</h1>
       <p className="mt-1 text-sm text-gray-600">Signed in as {me.email}</p>
+
+      {!me.emailVerified ? (
+        <section className="mt-4 rounded border border-amber-200 bg-amber-50 p-3 text-sm text-gray-800">
+          <p>
+            Your seller application can be submitted now, but you should still verify {me.email} to avoid delays.
+          </p>
+          {urlFlags.verifyError ? (
+            <p className="mt-2 text-red-900">
+              {urlFlags.verifyError === "missing_token"
+                ? "Verification link was incomplete. Request a new email below."
+                : "That verification link is invalid or expired. Request a new one below."}
+            </p>
+          ) : null}
+          {urlFlags.checkEmail ? <p className="mt-2">We sent you a verification link. Open it when you can.</p> : null}
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              disabled={resendState === "sending"}
+              onClick={() => {
+                void resendVerificationEmail();
+              }}
+              className="rounded-md bg-orange-600 px-4 py-2 text-sm font-medium text-white hover:bg-orange-700 disabled:opacity-50"
+            >
+              {resendState === "sending" ? "Sending…" : "Resend verification email"}
+            </button>
+            {resendState === "sent" ? (
+              <span className="text-sm text-green-800">Check your inbox for the new link.</span>
+            ) : null}
+            {resendState === "error" ? (
+              <span className="text-sm text-red-800">Could not send. Try again shortly.</span>
+            ) : null}
+          </div>
+          {devVerifyUrl ? (
+            <p className="mt-3 break-all text-xs text-stone-700">
+              Dev link:{" "}
+              <a href={devVerifyUrl} className="text-orange-800 underline">
+                Open verification link
+              </a>
+            </p>
+          ) : null}
+        </section>
+      ) : null}
+
+      {emailVerifiedJustNow ? (
+        <p className="mt-4 rounded border border-green-200 bg-green-50 p-3 text-sm text-green-900">
+          Email verified — you can submit your seller application below.
+        </p>
+      ) : null}
 
       {vendor ? (
         <section className="mt-6 rounded border border-gray-200 bg-white p-4">

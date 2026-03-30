@@ -142,7 +142,7 @@ export async function requestEmailVerification(email: string): Promise<{ token: 
   return { token: rawToken };
 }
 
-export async function confirmEmailVerification(rawToken: string): Promise<void> {
+export async function confirmEmailVerification(rawToken: string): Promise<{ userId: string }> {
   const tokenHash = hashToken(rawToken);
 
   const tokenRow = await prisma.emailVerificationToken.findUnique({
@@ -170,6 +170,8 @@ export async function confirmEmailVerification(rawToken: string): Promise<void> 
       data: { usedAt: new Date() },
     });
   });
+
+  return { userId: tokenRow.userId };
 }
 
 /** Creates a reset token; returns raw token for non-production or email delivery integration. */

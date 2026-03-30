@@ -9,6 +9,8 @@ export const signupSchema = z.object({
     .min(8, "Password must be at least 8 characters")
     .regex(/[A-Za-z]/, "Password must include a letter")
     .regex(/[0-9]/, "Password must include a number"),
+  /** Drives verification redirect + admin log line (e.g. vendor vs customer). */
+  intent: z.enum(["vendor", "customer"]).optional(),
 });
 
 export const loginSchema = z.object({

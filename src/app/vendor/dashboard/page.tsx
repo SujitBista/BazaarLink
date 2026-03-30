@@ -58,7 +58,7 @@ export default function VendorDashboardPage() {
         <div className="mt-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
           <p>{error}</p>
           {needsSignIn ? (
-            <a href="/login?next=/vendor/dashboard" className="mt-2 inline-block font-medium text-orange-800 underline">
+            <a href="/vendor/login?next=/vendor/dashboard" className="mt-2 inline-block font-medium text-orange-800 underline">
               Sign in
             </a>
           ) : null}

@@ -91,7 +91,7 @@ export default function HomeContent({ initialQ }: Props) {
             <a href="/account/orders" className="text-stone-600 hover:text-stone-900">
               Orders
             </a>
-            <a href="/vendor/dashboard" className="text-stone-500 hover:text-stone-800">
+            <a href="/vendor" className="text-stone-500 hover:text-stone-800">
               Vendor
             </a>
             <a href="/admin/vendors" className="text-stone-500 hover:text-stone-800">

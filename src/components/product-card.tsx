@@ -1,3 +1,5 @@
+import { ProductImage } from "@/components/product-image";
+
 export type ProductCardData = {
   id: string;
   name: string;
@@ -14,12 +16,7 @@ export function ProductCard({ product }: { product: ProductCardData }) {
     <li className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm transition hover:border-orange-200 hover:shadow-md">
       <a href={`/shop/product/${product.id}`} className="block">
         <div className="aspect-square w-full overflow-hidden rounded-md bg-gray-100">
-          {img ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={img} alt="" className="h-full w-full object-cover" />
-          ) : (
-            <div className="flex h-full items-center justify-center text-xs text-gray-400">No image</div>
-          )}
+          <ProductImage src={img} alt="" />
         </div>
         <p className="mt-2 text-xs text-orange-800/90">{product.category.name}</p>
         <h2 className="mt-0.5 font-medium text-gray-900">{product.name}</h2>
