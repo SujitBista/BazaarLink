@@ -15,7 +15,7 @@ function toJson(v: Record<string, unknown> | undefined): Prisma.InputJsonValue |
 
 export async function listCategories(parentId?: string | null) {
   return prisma.category.findMany({
-    where: parentId === undefined ? undefined : { parentId: parentId || null },
+    where: parentId === undefined ? { parentId: null } : { parentId: parentId || null },
     include: { children: true },
     orderBy: { name: "asc" },
   });

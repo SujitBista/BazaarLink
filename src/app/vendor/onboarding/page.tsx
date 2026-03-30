@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { fetchApiJson, formatValidationDetails } from "@/lib/client/api-json";
 
 type MeUser = {
@@ -69,11 +69,17 @@ type FlatCat = { id: string; name: string; slug: string };
 
 function flattenCategories(nodes: CategoryNode[]): FlatCat[] {
   const out: FlatCat[] = [];
+  const seen = new Set<string>();
   for (const c of nodes) {
-    out.push({ id: c.id, name: c.name, slug: c.slug });
+    if (!seen.has(c.slug)) {
+      out.push({ id: c.id, name: c.name, slug: c.slug });
+      seen.add(c.slug);
+    }
     if (c.children?.length) out.push(...flattenCategories(c.children));
   }
-  return out.sort((a, b) => a.name.localeCompare(b.name));
+  return out
+    .filter((cat, idx, arr) => arr.findIndex((entry) => entry.slug === cat.slug) === idx)
+    .sort((a, b) => a.name.localeCompare(b.name));
 }
 
 function normalizeSlugInput(raw: string): string {
@@ -90,9 +96,32 @@ function statusHeading(status: VendorRow["status"]): string {
     case "APPROVED":
       return "Approved";
     case "SUSPENDED":
-      return "Suspended";
+      return "Rejected";
     default:
       return status;
+  }
+}
+
+function statusColors(status: VendorRow["status"]): string {
+  switch (status) {
+    case "PENDING":
+      return "border-yellow-200 bg-yellow-50 text-yellow-900";
+    case "APPROVED":
+      return "border-green-200 bg-green-50 text-green-900";
+    case "SUSPENDED":
+      return "border-red-200 bg-red-50 text-red-900";
+    default:
+      return "border-gray-200 bg-gray-50 text-gray-900";
+  }
+}
+
+function getFilenameFromUrl(url: string): string {
+  try {
+    const pathname = new URL(url).pathname;
+    const last = pathname.split("/").filter(Boolean).pop();
+    return last ?? "uploaded-file";
+  } catch {
+    return "uploaded-file";
   }
 }
 
@@ -116,6 +145,8 @@ export default function VendorOnboardingPage() {
   const [storeDescription, setStoreDescription] = useState("");
   const [storeSlug, setStoreSlug] = useState("");
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
+  const [categoryQuery, setCategoryQuery] = useState("");
+  const [categoriesOpen, setCategoriesOpen] = useState(false);
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [documentUrl, setDocumentUrl] = useState("");
   const [contactEmail, setContactEmail] = useState("");
@@ -128,6 +159,9 @@ export default function VendorOnboardingPage() {
   const [logoUploading, setLogoUploading] = useState(false);
   const [documentUploading, setDocumentUploading] = useState(false);
   const [logoObjectUrl, setLogoObjectUrl] = useState<string | null>(null);
+  const [documentObjectUrl, setDocumentObjectUrl] = useState<string | null>(null);
+  const [logoFileName, setLogoFileName] = useState("");
+  const [documentFileName, setDocumentFileName] = useState("");
 
   const [slugCheck, setSlugCheck] = useState<"idle" | "checking" | "ok" | "taken" | "invalid">("idle");
   const slugDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -135,6 +169,7 @@ export default function VendorOnboardingPage() {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [validationLines, setValidationLines] = useState<string[]>([]);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [resendState, setResendState] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const [devVerifyUrl, setDevVerifyUrl] = useState<string | null>(null);
   const [urlFlags, setUrlFlags] = useState<{
@@ -168,8 +203,9 @@ export default function VendorOnboardingPage() {
   useEffect(() => {
     return () => {
       if (logoObjectUrl) URL.revokeObjectURL(logoObjectUrl);
+      if (documentObjectUrl) URL.revokeObjectURL(documentObjectUrl);
     };
-  }, [logoObjectUrl]);
+  }, [documentObjectUrl, logoObjectUrl]);
 
   const refresh = useCallback(async () => {
     setLoadError(null);
@@ -215,6 +251,8 @@ export default function VendorOnboardingPage() {
       if (p.contactEmail) setContactEmail(p.contactEmail);
       if (p.contactPhone) setContactPhone(p.contactPhone);
       if (p.documentUrl) setDocumentUrl(p.documentUrl);
+      if (p.storeProfile.logoUrl) setLogoFileName(getFilenameFromUrl(p.storeProfile.logoUrl));
+      if (p.documentUrl) setDocumentFileName(getFilenameFromUrl(p.documentUrl));
     } else if (!vRes.data.vendor && meRes.data.user) {
       setContactEmail((prev) => (prev.trim() ? prev : meRes.data.user!.email));
     }
@@ -246,16 +284,49 @@ export default function VendorOnboardingPage() {
     setResendState(res.ok ? "sent" : "error");
   }, [me]);
 
-  const [storePreviewOrigin, setStorePreviewOrigin] = useState("");
-  useEffect(() => {
-    setStorePreviewOrigin(window.location.origin);
-  }, []);
-
   const previewSlug = normalizeSlugInput(storeSlug);
-  const storePreviewUrl =
-    previewSlug.length >= 3 && /^[a-z0-9-]+$/.test(previewSlug)
-      ? `${storePreviewOrigin || process.env.NEXT_PUBLIC_APP_URL || ""}/store/${previewSlug}`
-      : null;
+  const storePreviewUrl = previewSlug.length >= 3 && /^[a-z0-9-]+$/.test(previewSlug) ? `yourapp.com/store/${previewSlug}` : null;
+  const isPending = vendor?.status === "PENDING";
+  const fieldsLocked = isPending;
+  const requiredFieldErrors = useMemo(
+    () =>
+      ({
+        businessName: !businessName.trim() ? "Business name is required." : "",
+        panOrVatNumber: !panOrVatNumber.trim() ? "PAN or VAT number is required." : "",
+        businessAddressProvince: !businessAddressProvince.trim() ? "Province is required." : "",
+        businessAddressCity: !businessAddressCity.trim() ? "City is required." : "",
+        businessAddressFull: !businessAddressFull.trim() ? "Full business address is required." : "",
+        bankName: !bankName.trim() ? "Bank name is required." : "",
+        bankAccountNumber: !bankAccountNumber.trim() ? "Account number is required." : "",
+        bankAccountHolder: !bankAccountHolder.trim() ? "Account holder is required." : "",
+        storeDescription: !storeDescription.trim() ? "Store description is required." : "",
+        storeSlug: !previewSlug ? "Store URL slug is required." : "",
+        categories: selectedCategories.length < 1 ? "Select at least one category." : "",
+        termsAccepted: !termsAccepted ? "You must accept the vendor onboarding terms and policy." : "",
+      }) as Record<string, string>,
+    [
+      bankAccountHolder,
+      bankAccountNumber,
+      bankName,
+      businessAddressCity,
+      businessAddressFull,
+      businessAddressProvince,
+      businessName,
+      panOrVatNumber,
+      previewSlug,
+      selectedCategories.length,
+      storeDescription,
+      termsAccepted,
+    ]
+  );
+  const filteredCategories = useMemo(() => {
+    const q = categoryQuery.trim().toLowerCase();
+    const deduped = catalogCategories.filter(
+      (cat, idx, arr) => arr.findIndex((entry) => entry.slug === cat.slug) === idx
+    );
+    if (!q) return deduped;
+    return deduped.filter((cat) => cat.name.toLowerCase().includes(q) || cat.slug.toLowerCase().includes(q));
+  }, [catalogCategories, categoryQuery]);
 
   useEffect(() => {
     if (slugDebounceRef.current) clearTimeout(slugDebounceRef.current);
@@ -309,6 +380,7 @@ export default function VendorOnboardingPage() {
     if (logoObjectUrl) URL.revokeObjectURL(logoObjectUrl);
     const url = URL.createObjectURL(file);
     setLogoObjectUrl(url);
+    setLogoFileName(file.name);
     setLogoUploading(true);
     const fd = new FormData();
     fd.append("file", file);
@@ -322,6 +394,7 @@ export default function VendorOnboardingPage() {
       return;
     }
     setStoreLogoUrl(res.data.url);
+    setLogoFileName(file.name);
     URL.revokeObjectURL(url);
     setLogoObjectUrl(null);
   }
@@ -329,6 +402,10 @@ export default function VendorOnboardingPage() {
   async function onDocumentFileChange(file: File | null) {
     if (!file) return;
     setSubmitError(null);
+    if (documentObjectUrl) URL.revokeObjectURL(documentObjectUrl);
+    const objectUrl = URL.createObjectURL(file);
+    setDocumentObjectUrl(objectUrl);
+    setDocumentFileName(file.name);
     setDocumentUploading(true);
     const fd = new FormData();
     fd.append("file", file);
@@ -337,23 +414,33 @@ export default function VendorOnboardingPage() {
     setDocumentUploading(false);
     if (!res.ok) {
       setSubmitError(res.error);
+      URL.revokeObjectURL(objectUrl);
+      setDocumentObjectUrl(null);
       return;
     }
     setDocumentUrl(res.data.url);
+    setDocumentFileName(file.name);
   }
 
   function toggleCategory(slug: string) {
     setSelectedCategories((prev) =>
       prev.includes(slug) ? prev.filter((s) => s !== slug) : [...prev, slug]
     );
+    setFieldErrors((prev) => ({ ...prev, categories: "" }));
   }
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSubmitError(null);
     setValidationLines([]);
+    setFieldErrors({});
+    if (fieldsLocked) return;
 
     const clientErrors: string[] = [];
+    const nextFieldErrors: Record<string, string> = {};
+    for (const [fieldName, message] of Object.entries(requiredFieldErrors)) {
+      if (message) nextFieldErrors[fieldName] = message;
+    }
     if (selectedCategories.length < 1) clientErrors.push("Select at least one category.");
     if (storeDescription.trim().length > 2000) clientErrors.push("Store description must be at most 2000 characters.");
     if (contactPhone.trim()) {
@@ -366,7 +453,8 @@ export default function VendorOnboardingPage() {
     }
     if (slugCheck === "taken") clientErrors.push("That store URL is already taken.");
     if (slugCheck === "invalid") clientErrors.push("Fix the store URL slug before submitting.");
-    if (clientErrors.length) {
+    setFieldErrors(nextFieldErrors);
+    if (Object.keys(nextFieldErrors).length > 0 || clientErrors.length) {
       setValidationLines(clientErrors);
       return;
     }
@@ -472,12 +560,14 @@ export default function VendorOnboardingPage() {
   }
 
   const status = vendor?.status;
-  const canEdit = !vendor || status === "PENDING";
+  const canEdit = !vendor || status === "SUSPENDED" || status === "PENDING";
   const emailVerifiedJustNow = urlFlags.emailVerified;
-  const canSubmit = canEdit && me.emailVerified;
+  const canSubmit = canEdit && me.emailVerified && !fieldsLocked;
   const stepLabels = ["Business details", "Address & bank", "Store profile"];
   const slugBlocking = slugCheck === "taken" || slugCheck === "invalid" || slugCheck === "checking";
   const logoPreviewSrc = logoObjectUrl || storeLogoUrl || null;
+  const documentPreviewSrc = documentObjectUrl || documentUrl || null;
+  const documentIsImage = /\.(png|jpe?g|webp|gif)$/i.test(documentFileName || documentPreviewSrc || "");
 
   return (
     <main className="mx-auto max-w-2xl p-8">
@@ -546,7 +636,11 @@ export default function VendorOnboardingPage() {
       {vendor ? (
         <section className="mt-6 rounded border border-gray-200 bg-white p-4">
           <h2 className="text-sm font-medium text-gray-500">Current status</h2>
-          <p className="mt-1 text-lg font-semibold text-gray-900">{status ? statusHeading(status) : "—"}</p>
+          <p className="mt-2">
+            <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-sm font-semibold ${status ? statusColors(status) : "border-gray-200 bg-gray-50 text-gray-900"}`}>
+              {status ? statusHeading(status) : "—"}
+            </span>
+          </p>
           {vendor.status === "PENDING" ? (
             <p className="mt-1 text-sm text-gray-600">We review new applications within one to two business days.</p>
           ) : null}
@@ -570,7 +664,7 @@ export default function VendorOnboardingPage() {
 
       {!canEdit ? (
         <p className="mt-6 text-sm text-gray-600">
-          Updates are only allowed while your application is pending review. Contact support if you need changes.
+          Updates are currently available only for new or rejected applications. Contact support if you need changes.
         </p>
       ) : (
         <form onSubmit={(e) => void onSubmit(e)} className="mt-6 space-y-4">
@@ -608,6 +702,11 @@ export default function VendorOnboardingPage() {
                 );
               })}
             </div>
+            {fieldsLocked ? (
+              <p className="mt-3 rounded border border-yellow-200 bg-yellow-50 p-2 text-xs text-yellow-900">
+                Application is pending review. Fields are locked until the review is complete.
+              </p>
+            ) : null}
           </div>
 
           {step === 1 ? (
@@ -622,8 +721,10 @@ export default function VendorOnboardingPage() {
                   required
                   value={businessName}
                   onChange={(e) => setBusinessName(e.target.value)}
+                  disabled={fieldsLocked}
                   className="mt-1 w-full rounded border border-gray-300 px-3 py-2 text-sm"
                 />
+                {fieldErrors.businessName ? <p className="mt-1 text-xs text-red-700">{fieldErrors.businessName}</p> : null}
               </div>
               <div>
                 <label htmlFor="businessType" className="block text-sm font-medium text-gray-700">
@@ -633,6 +734,7 @@ export default function VendorOnboardingPage() {
                   id="businessType"
                   value={businessType}
                   onChange={(e) => setBusinessType(e.target.value as "individual" | "company")}
+                  disabled={fieldsLocked}
                   className="mt-1 w-full rounded border border-gray-300 px-3 py-2 text-sm"
                 >
                   <option value="individual">Individual</option>
@@ -647,8 +749,10 @@ export default function VendorOnboardingPage() {
                   id="panOrVatNumber"
                   value={panOrVatNumber}
                   onChange={(e) => setPanOrVatNumber(e.target.value)}
+                  disabled={fieldsLocked}
                   className="mt-1 w-full rounded border border-gray-300 px-3 py-2 text-sm"
                 />
+                {fieldErrors.panOrVatNumber ? <p className="mt-1 text-xs text-red-700">{fieldErrors.panOrVatNumber}</p> : null}
               </div>
               <div>
                 <label htmlFor="businessRegistrationNumber" className="block text-sm font-medium text-gray-700">
@@ -658,6 +762,7 @@ export default function VendorOnboardingPage() {
                   id="businessRegistrationNumber"
                   value={businessRegistrationNumber}
                   onChange={(e) => setBusinessRegistrationNumber(e.target.value)}
+                  disabled={fieldsLocked}
                   className="mt-1 w-full rounded border border-gray-300 px-3 py-2 text-sm"
                 />
               </div>
@@ -674,8 +779,10 @@ export default function VendorOnboardingPage() {
                   id="businessAddressProvince"
                   value={businessAddressProvince}
                   onChange={(e) => setBusinessAddressProvince(e.target.value)}
+                  disabled={fieldsLocked}
                   className="mt-1 w-full rounded border border-gray-300 px-3 py-2 text-sm"
                 />
+                {fieldErrors.businessAddressProvince ? <p className="mt-1 text-xs text-red-700">{fieldErrors.businessAddressProvince}</p> : null}
               </div>
               <div>
                 <label htmlFor="businessAddressCity" className="block text-sm font-medium text-gray-700">
@@ -685,8 +792,10 @@ export default function VendorOnboardingPage() {
                   id="businessAddressCity"
                   value={businessAddressCity}
                   onChange={(e) => setBusinessAddressCity(e.target.value)}
+                  disabled={fieldsLocked}
                   className="mt-1 w-full rounded border border-gray-300 px-3 py-2 text-sm"
                 />
+                {fieldErrors.businessAddressCity ? <p className="mt-1 text-xs text-red-700">{fieldErrors.businessAddressCity}</p> : null}
               </div>
               <div>
                 <label htmlFor="businessAddressFull" className="block text-sm font-medium text-gray-700">
@@ -696,8 +805,10 @@ export default function VendorOnboardingPage() {
                   id="businessAddressFull"
                   value={businessAddressFull}
                   onChange={(e) => setBusinessAddressFull(e.target.value)}
+                  disabled={fieldsLocked}
                   className="mt-1 w-full rounded border border-gray-300 px-3 py-2 text-sm"
                 />
+                {fieldErrors.businessAddressFull ? <p className="mt-1 text-xs text-red-700">{fieldErrors.businessAddressFull}</p> : null}
               </div>
               <div>
                 <label htmlFor="bankName" className="block text-sm font-medium text-gray-700">
@@ -707,8 +818,10 @@ export default function VendorOnboardingPage() {
                   id="bankName"
                   value={bankName}
                   onChange={(e) => setBankName(e.target.value)}
+                  disabled={fieldsLocked}
                   className="mt-1 w-full rounded border border-gray-300 px-3 py-2 text-sm"
                 />
+                {fieldErrors.bankName ? <p className="mt-1 text-xs text-red-700">{fieldErrors.bankName}</p> : null}
               </div>
               <div>
                 <label htmlFor="bankAccountNumber" className="block text-sm font-medium text-gray-700">
@@ -718,8 +831,10 @@ export default function VendorOnboardingPage() {
                   id="bankAccountNumber"
                   value={bankAccountNumber}
                   onChange={(e) => setBankAccountNumber(e.target.value)}
+                  disabled={fieldsLocked}
                   className="mt-1 w-full rounded border border-gray-300 px-3 py-2 text-sm"
                 />
+                {fieldErrors.bankAccountNumber ? <p className="mt-1 text-xs text-red-700">{fieldErrors.bankAccountNumber}</p> : null}
               </div>
               <div>
                 <label htmlFor="bankAccountHolder" className="block text-sm font-medium text-gray-700">
@@ -729,8 +844,10 @@ export default function VendorOnboardingPage() {
                   id="bankAccountHolder"
                   value={bankAccountHolder}
                   onChange={(e) => setBankAccountHolder(e.target.value)}
+                  disabled={fieldsLocked}
                   className="mt-1 w-full rounded border border-gray-300 px-3 py-2 text-sm"
                 />
+                {fieldErrors.bankAccountHolder ? <p className="mt-1 text-xs text-red-700">{fieldErrors.bankAccountHolder}</p> : null}
               </div>
             </>
           ) : null}
@@ -745,7 +862,7 @@ export default function VendorOnboardingPage() {
                   accept="image/jpeg,image/png,image/webp,image/gif"
                   className="mt-2 block w-full text-sm text-gray-600 file:mr-3 file:rounded file:border-0 file:bg-orange-50 file:px-3 file:py-2 file:text-sm file:font-medium file:text-orange-900 hover:file:bg-orange-100"
                   onChange={(e) => void onLogoFileChange(e.target.files?.[0] ?? null)}
-                  disabled={logoUploading}
+                  disabled={logoUploading || fieldsLocked}
                 />
                 {logoUploading ? <p className="mt-2 text-xs text-gray-700">Uploading logo…</p> : null}
                 {logoPreviewSrc ? (
@@ -756,12 +873,13 @@ export default function VendorOnboardingPage() {
                       className="h-20 w-20 rounded border border-gray-200 bg-white object-contain p-1"
                     />
                     <div className="text-xs text-gray-600">
-                      <p>Preview</p>
+                      <p>{logoFileName || "Uploaded logo"}</p>
                       {storeLogoUrl ? (
                         <a href={storeLogoUrl} target="_blank" rel="noopener noreferrer" className="text-orange-800 underline">
                           Open file
                         </a>
                       ) : null}
+                      {!fieldsLocked ? <p className="mt-1 text-gray-500">Choose another file to replace.</p> : null}
                     </div>
                   </div>
                 ) : null}
@@ -776,10 +894,14 @@ export default function VendorOnboardingPage() {
                   value={storeDescription}
                   onChange={(e) => setStoreDescription(e.target.value)}
                   maxLength={2000}
+                  disabled={fieldsLocked}
                   className="mt-1 w-full rounded border border-gray-300 px-3 py-2 text-sm"
                   rows={4}
                 />
-                <p className="mt-1 text-xs text-gray-500">Required — max 2000 characters ({storeDescription.length}/2000).</p>
+                <p className="mt-1 text-xs text-gray-500">
+                  Describe what you sell, your specialties, and what customers can expect. ({storeDescription.length}/2000)
+                </p>
+                {fieldErrors.storeDescription ? <p className="mt-1 text-xs text-red-700">{fieldErrors.storeDescription}</p> : null}
               </div>
 
               <div>
@@ -791,6 +913,7 @@ export default function VendorOnboardingPage() {
                   value={storeSlug}
                   onChange={(e) => setStoreSlug(normalizeSlugInput(e.target.value))}
                   placeholder="your-store-name"
+                  disabled={fieldsLocked}
                   className="mt-1 w-full rounded border border-gray-300 px-3 py-2 font-mono text-sm"
                   autoComplete="off"
                 />
@@ -802,6 +925,7 @@ export default function VendorOnboardingPage() {
                 ) : (
                   <p className="mt-1 text-xs text-gray-500">Lowercase letters, numbers, and hyphens only (no spaces).</p>
                 )}
+                {fieldErrors.storeSlug ? <p className="mt-1 text-xs text-red-700">{fieldErrors.storeSlug}</p> : null}
                 {step === 3 ? (
                   <p className="mt-1 text-xs">
                     {slugCheck === "checking" ? (
@@ -821,20 +945,59 @@ export default function VendorOnboardingPage() {
                 <span className="block text-sm font-medium text-gray-700">Categories</span>
                 <p className="mt-0.5 text-xs text-gray-500">Select at least one — required.</p>
                 {categoriesLoadError ? <p className="mt-2 text-xs text-red-800">{categoriesLoadError}</p> : null}
-                <fieldset className="mt-2 max-h-60 space-y-2 overflow-y-auto rounded border border-gray-200 bg-gray-50 p-3">
-                  <legend className="sr-only">Product categories</legend>
-                  {catalogCategories.map((c) => (
-                    <label key={c.slug} className="flex cursor-pointer items-start gap-2 text-sm text-gray-800">
+                <div className="mt-2 rounded border border-gray-200 bg-white p-2">
+                  <button
+                    type="button"
+                    disabled={fieldsLocked}
+                    onClick={() => setCategoriesOpen((prev) => !prev)}
+                    className="flex w-full items-center justify-between rounded border border-gray-300 px-3 py-2 text-left text-sm disabled:opacity-60"
+                  >
+                    <span>
+                      {selectedCategories.length > 0
+                        ? `${selectedCategories.length} categories selected`
+                        : "Select categories"}
+                    </span>
+                    <span className="text-xs text-gray-500">{categoriesOpen ? "Hide" : "Show"}</span>
+                  </button>
+                  {selectedCategories.length > 0 ? (
+                    <p className="mt-2 text-xs text-gray-600">
+                      {selectedCategories
+                        .map((slug) => catalogCategories.find((cat) => cat.slug === slug)?.name ?? slug)
+                        .join(", ")}
+                    </p>
+                  ) : null}
+                  {categoriesOpen ? (
+                    <div className="mt-2 rounded border border-gray-200 bg-gray-50 p-2">
                       <input
-                        type="checkbox"
-                        checked={selectedCategories.includes(c.slug)}
-                        onChange={() => toggleCategory(c.slug)}
-                        className="mt-0.5"
+                        type="text"
+                        value={categoryQuery}
+                        onChange={(e) => setCategoryQuery(e.target.value)}
+                        placeholder="Search categories"
+                        disabled={fieldsLocked}
+                        className="w-full rounded border border-gray-300 px-3 py-2 text-sm"
                       />
-                      <span>{c.name}</span>
-                    </label>
-                  ))}
-                </fieldset>
+                      <fieldset className="mt-2 max-h-52 space-y-2 overflow-y-auto">
+                        <legend className="sr-only">Product categories</legend>
+                        {filteredCategories.map((c) => (
+                          <label key={c.slug} className="flex cursor-pointer items-start gap-2 text-sm text-gray-800">
+                            <input
+                              type="checkbox"
+                              checked={selectedCategories.includes(c.slug)}
+                              onChange={() => toggleCategory(c.slug)}
+                              disabled={fieldsLocked}
+                              className="mt-0.5"
+                            />
+                            <span>{c.name}</span>
+                          </label>
+                        ))}
+                        {filteredCategories.length === 0 ? (
+                          <p className="text-xs text-gray-500">No categories match your search.</p>
+                        ) : null}
+                      </fieldset>
+                    </div>
+                  ) : null}
+                </div>
+                {fieldErrors.categories ? <p className="mt-1 text-xs text-red-700">{fieldErrors.categories}</p> : null}
               </div>
 
               <div>
@@ -845,16 +1008,30 @@ export default function VendorOnboardingPage() {
                   accept="application/pdf,image/jpeg,image/png,image/webp"
                   className="mt-2 block w-full text-sm text-gray-600 file:mr-3 file:rounded file:border-0 file:bg-orange-50 file:px-3 file:py-2 file:text-sm file:font-medium file:text-orange-900 hover:file:bg-orange-100"
                   onChange={(e) => void onDocumentFileChange(e.target.files?.[0] ?? null)}
-                  disabled={documentUploading}
+                  disabled={documentUploading || fieldsLocked}
                 />
                 {documentUploading ? <p className="mt-2 text-xs text-gray-700">Uploading document…</p> : null}
-                {documentUrl ? (
-                  <p className="mt-2 text-sm">
-                    <a href={documentUrl} target="_blank" rel="noopener noreferrer" className="text-orange-800 underline">
-                      View uploaded document
-                    </a>
-                  </p>
+                {documentPreviewSrc ? (
+                  <div className="mt-3 flex items-start gap-3">
+                    {documentIsImage ? (
+                      <img
+                        src={documentPreviewSrc}
+                        alt="Document preview"
+                        className="h-20 w-20 rounded border border-gray-200 bg-white object-cover p-1"
+                      />
+                    ) : (
+                      <div className="flex h-20 w-20 items-center justify-center rounded border border-gray-200 bg-gray-50 text-xs text-gray-600">
+                        Document
+                      </div>
+                    )}
+                    <p className="text-sm">
+                      <a href={documentPreviewSrc} target="_blank" rel="noopener noreferrer" className="text-orange-800 underline">
+                        {documentFileName || "View uploaded document"}
+                      </a>
+                    </p>
+                  </div>
                 ) : null}
+                {documentFileName && !fieldsLocked ? <p className="mt-1 text-xs text-gray-500">Choose another file to replace.</p> : null}
               </div>
 
               <div>
@@ -867,6 +1044,7 @@ export default function VendorOnboardingPage() {
                   type="email"
                   value={contactEmail}
                   onChange={(e) => setContactEmail(e.target.value)}
+                  disabled={fieldsLocked}
                   className="mt-1 w-full rounded border border-gray-300 px-3 py-2 text-sm"
                 />
               </div>
@@ -880,6 +1058,7 @@ export default function VendorOnboardingPage() {
                   value={contactPhone}
                   onChange={(e) => setContactPhone(e.target.value)}
                   placeholder="+977 1 555 0123"
+                  disabled={fieldsLocked}
                   className="mt-1 w-full rounded border border-gray-300 px-3 py-2 text-sm"
                 />
                 <p className="mt-1 text-xs text-gray-500">7–20 digits; optional +, spaces, or dashes.</p>
@@ -890,10 +1069,12 @@ export default function VendorOnboardingPage() {
                   type="checkbox"
                   checked={termsAccepted}
                   onChange={(e) => setTermsAccepted(e.target.checked)}
+                  disabled={fieldsLocked}
                   className="mt-0.5"
                 />
                 <span>I accept the vendor onboarding terms and policy.</span>
               </label>
+              {fieldErrors.termsAccepted ? <p className="mt-1 text-xs text-red-700">{fieldErrors.termsAccepted}</p> : null}
             </>
           ) : null}
 
