@@ -37,6 +37,33 @@ afterEach(async () => {
 });
 
 describe("Phase 1 integration and edge cases", () => {
+  const onboardingPayload = {
+    businessName: "Acme Traders",
+    businessType: "company" as const,
+    panOrVatNumber: "PAN1234567",
+    businessRegistrationNumber: "REG-001",
+    businessAddress: {
+      province: "Bagmati",
+      city: "Kathmandu",
+      fullAddress: "Kathmandu, Nepal",
+    },
+    bankDetails: {
+      bankName: "Sample Bank",
+      accountNumber: "1234567890",
+      accountHolder: "Acme Traders",
+    },
+    storeProfile: {
+      logoUrl: "https://cdn.example.com/logo.png",
+      description: "Trusted marketplace seller",
+      slug: "acme-traders",
+    },
+    categories: ["electronics", "home"],
+    termsAccepted: true,
+    documentUrl: "https://docs.example.com/doc1.pdf",
+    contactEmail: "owner@example.com",
+    contactPhone: "+15550001111",
+  };
+
   it("keeps duplicate signup conflict deterministic under race", async () => {
     const email = uniqueEmail("duplicate-signup").toUpperCase();
     const payload = { email: `  ${email}  `, password: "Pass1234" };
@@ -125,26 +152,38 @@ describe("Phase 1 integration and edge cases", () => {
   it("enforces onboarding gating, idempotent resubmission, moderation transitions, and privacy", async () => {
     const user = await signup({ email: uniqueEmail("vendor"), password: "Pass1234" });
 
-    const blocked = (await submitVendorOnboarding(user.id, {
-      businessName: "Acme Traders",
-      documentUrl: "https://docs.example.com/doc1.pdf",
-      contactEmail: "owner@example.com",
-      contactPhone: "+15550001111",
-    }).catch((e: Error & { code?: string; statusCode?: number }) => e)) as Error & { code?: string; statusCode?: number };
+    const blocked = (await submitVendorOnboarding(user.id, onboardingPayload).catch(
+      (e: Error & { code?: string; statusCode?: number }) => e
+    )) as Error & { code?: string; statusCode?: number };
     expect(blocked.code).toBe("EMAIL_NOT_VERIFIED");
     expect(blocked.statusCode).toBe(403);
 
     await prisma.user.update({ where: { id: user.id }, data: { emailVerified: true } });
 
-    const first = await submitVendorOnboarding(user.id, {
-      businessName: "Acme Traders",
-      documentUrl: "https://docs.example.com/doc1.pdf",
-      contactEmail: "owner@example.com",
-      contactPhone: "+15550001111",
-    });
+    const first = await submitVendorOnboarding(user.id, onboardingPayload);
 
     const second = await submitVendorOnboarding(user.id, {
       businessName: "Acme Updated",
+      businessType: "individual",
+      panOrVatNumber: "PAN7654321",
+      businessRegistrationNumber: "REG-002",
+      businessAddress: {
+        province: "Gandaki",
+        city: "Pokhara",
+        fullAddress: "Pokhara, Nepal",
+      },
+      bankDetails: {
+        bankName: "Another Bank",
+        accountNumber: "888111222",
+        accountHolder: "Acme Updated",
+      },
+      storeProfile: {
+        logoUrl: "https://docs.example.com/logo2.png",
+        description: "Acme updated profile",
+        slug: "acme-updated",
+      },
+      categories: ["fashion"],
+      termsAccepted: true,
       documentUrl: "https://docs.example.com/doc2.pdf",
       contactEmail: "owner2@example.com",
       contactPhone: "+15552223333",

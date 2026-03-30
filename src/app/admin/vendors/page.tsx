@@ -18,6 +18,7 @@ type AdminVendorRow = {
   status: "PENDING" | "APPROVED" | "SUSPENDED";
   approvedAt: string | null;
   approvedById: string | null;
+  rejectionReason: string | null;
   createdAt: string;
   updatedAt: string;
   user: { id: string; email: string };
@@ -45,6 +46,7 @@ export default function AdminVendorsPage() {
   const [filter, setFilter] = useState<FilterMode>("pending");
   const [actionId, setActionId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<{ id: string; message: string; details: string[] } | null>(null);
+  const [suspendReasonById, setSuspendReasonById] = useState<Record<string, string>>({});
 
   const loadList = useCallback(async () => {
     setLoadError(null);
@@ -110,6 +112,8 @@ export default function AdminVendorsPage() {
     setActionId(id);
     const res = await fetchApiJson<SingleVendorResponse>(`/api/admin/vendors/${encodeURIComponent(id)}/suspend`, {
       method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ rejectionReason: suspendReasonById[id]?.trim() || undefined }),
     });
     setActionId(null);
     if (!res.ok) {
@@ -252,16 +256,31 @@ export default function AdminVendorsPage() {
                         </button>
                       )}
                       {(v.status === "PENDING" || v.status === "APPROVED") && (
-                        <button
-                          type="button"
-                          disabled={actionId === v.id}
-                          className="rounded border border-gray-300 px-2 py-1 text-xs disabled:opacity-50"
-                          onClick={() => void suspend(v.id)}
-                        >
-                          Suspend
-                        </button>
+                        <>
+                          <input
+                            type="text"
+                            value={suspendReasonById[v.id] ?? ""}
+                            onChange={(e) =>
+                              setSuspendReasonById((prev) => ({
+                                ...prev,
+                                [v.id]: e.target.value,
+                              }))
+                            }
+                            placeholder="Reason (optional)"
+                            className="rounded border border-gray-300 px-2 py-1 text-xs"
+                          />
+                          <button
+                            type="button"
+                            disabled={actionId === v.id}
+                            className="rounded border border-gray-300 px-2 py-1 text-xs disabled:opacity-50"
+                            onClick={() => void suspend(v.id)}
+                          >
+                            Suspend
+                          </button>
+                        </>
                       )}
                     </div>
+                    {v.rejectionReason ? <p className="mt-2 text-xs text-amber-800">Reason: {v.rejectionReason}</p> : null}
                     {actionError?.id === v.id ? (
                       <div className="mt-2 text-xs text-red-800">
                         <p>{actionError.message}</p>

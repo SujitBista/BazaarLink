@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db";
 import type { RegisterVendorInput, UpdateVendorProfileInput } from "@/lib/validations/vendor";
-import { Prisma, UserRole, VendorStatus } from "@prisma/client";
+import { BusinessType, Prisma, UserRole, VendorStatus } from "@prisma/client";
 import { notifyAdminVendorApplicationSubmitted } from "@/lib/admin-notify";
 
 type VendorWithProfile = Prisma.VendorGetPayload<{ include: { profile: true } }>;
@@ -29,6 +29,8 @@ export function toNonAdminVendorResponse(vendor: VendorWithProfile) {
     id: vendor.id,
     userId: vendor.userId,
     status: vendor.status,
+    termsAccepted: vendor.termsAccepted,
+    rejectionReason: vendor.rejectionReason,
     approvedAt: vendor.approvedAt,
     createdAt: vendor.createdAt,
     updatedAt: vendor.updatedAt,
@@ -37,6 +39,25 @@ export function toNonAdminVendorResponse(vendor: VendorWithProfile) {
           id: vendor.profile.id,
           vendorId: vendor.profile.vendorId,
           businessName: vendor.profile.businessName,
+          businessType: vendor.profile.businessType,
+          panOrVatNumber: vendor.profile.panOrVatNumber,
+          businessRegistrationNumber: vendor.profile.businessRegistrationNumber,
+          businessAddress: {
+            province: vendor.profile.businessAddressProvince,
+            city: vendor.profile.businessAddressCity,
+            fullAddress: vendor.profile.businessAddressFull,
+          },
+          bankDetails: {
+            bankName: vendor.profile.bankName,
+            accountNumber: vendor.profile.bankAccountNumber,
+            accountHolder: vendor.profile.bankAccountHolder,
+          },
+          storeProfile: {
+            logoUrl: vendor.profile.storeLogoUrl,
+            description: vendor.profile.storeDescription,
+            slug: vendor.profile.storeSlug,
+          },
+          categories: vendor.profile.categories,
           createdAt: vendor.profile.createdAt,
           updatedAt: vendor.profile.updatedAt,
         }
@@ -85,6 +106,9 @@ export async function submitVendorOnboarding(userId: string, input: RegisterVend
   if (user.role === UserRole.ADMIN) {
     throw createServiceError("Admin users cannot submit vendor onboarding", 403, "ROLE_NOT_ALLOWED");
   }
+  if (!user.emailVerified) {
+    throw createServiceError("Email not verified", 403, "EMAIL_NOT_VERIFIED");
+  }
 
   try {
     let isFirstApplication = false;
@@ -96,6 +120,19 @@ export async function submitVendorOnboarding(userId: string, input: RegisterVend
 
       const profileData = {
         businessName: input.businessName.trim(),
+        businessType: input.businessType === "individual" ? BusinessType.INDIVIDUAL : BusinessType.COMPANY,
+        panOrVatNumber: input.panOrVatNumber.trim(),
+        businessRegistrationNumber: normalizeOptional(input.businessRegistrationNumber),
+        businessAddressProvince: input.businessAddress.province.trim(),
+        businessAddressCity: input.businessAddress.city.trim(),
+        businessAddressFull: input.businessAddress.fullAddress.trim(),
+        bankName: input.bankDetails.bankName.trim(),
+        bankAccountNumber: input.bankDetails.accountNumber.trim(),
+        bankAccountHolder: input.bankDetails.accountHolder.trim(),
+        storeLogoUrl: normalizeOptional(input.storeProfile.logoUrl),
+        storeDescription: input.storeProfile.description.trim(),
+        storeSlug: input.storeProfile.slug.trim(),
+        categories: input.categories.map((category) => category.trim()).filter(Boolean),
         documentUrl: normalizeOptional(input.documentUrl),
         contactEmail: normalizeOptional(input.contactEmail),
         contactPhone: normalizeOptional(input.contactPhone),
@@ -114,6 +151,8 @@ export async function submitVendorOnboarding(userId: string, input: RegisterVend
           data: {
             userId,
             status: VendorStatus.PENDING,
+            termsAccepted: input.termsAccepted,
+            rejectionReason: null,
             approvedAt: null,
             approvedById: null,
             profile: {
@@ -135,6 +174,8 @@ export async function submitVendorOnboarding(userId: string, input: RegisterVend
       const updatedVendor = await tx.vendor.update({
         where: { id: existingVendor.id },
         data: {
+          termsAccepted: input.termsAccepted,
+          rejectionReason: null,
           approvedAt: null,
           approvedById: null,
           profile: existingVendor.profile
@@ -233,6 +274,7 @@ export async function approveVendor(vendorId: string, adminUserId: string) {
       where: { id: vendorId },
       data: {
         status: VendorStatus.APPROVED,
+        rejectionReason: null,
         approvedAt: new Date(),
         approvedById: adminUserId,
       },
@@ -243,7 +285,7 @@ export async function approveVendor(vendorId: string, adminUserId: string) {
   return updated;
 }
 
-export async function suspendVendor(vendorId: string) {
+export async function suspendVendor(vendorId: string, rejectionReason?: string) {
   const vendor = await prisma.vendor.findUnique({
     where: { id: vendorId },
     include: { profile: true, user: { select: { id: true, email: true } } },
@@ -264,7 +306,10 @@ export async function suspendVendor(vendorId: string) {
 
   return prisma.vendor.update({
     where: { id: vendorId },
-    data: { status: VendorStatus.SUSPENDED },
+    data: {
+      status: VendorStatus.SUSPENDED,
+      rejectionReason: normalizeOptional(rejectionReason),
+    },
     include: { profile: true, user: { select: { id: true, email: true } } },
   });
 }

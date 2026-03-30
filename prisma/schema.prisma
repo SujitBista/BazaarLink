@@ -25,6 +25,11 @@ enum VendorStatus {
   SUSPENDED
 }
 
+enum BusinessType {
+  INDIVIDUAL
+  COMPANY
+}
+
 enum ProductStatus {
   DRAFT
   ACTIVE
@@ -70,6 +75,8 @@ model Vendor {
   id         String       @id @default(cuid())
   userId     String       @unique @map("user_id")
   status     VendorStatus @default(PENDING)
+  termsAccepted Boolean   @default(false) @map("terms_accepted")
+  rejectionReason String? @map("rejection_reason")
   approvedAt DateTime?    @map("approved_at")
   approvedById String?      @map("approved_by")
   createdAt  DateTime     @default(now()) @map("created_at")
@@ -113,6 +120,19 @@ model VendorProfile {
   id           String   @id @default(cuid())
   vendorId     String   @unique @map("vendor_id")
   businessName String   @map("business_name")
+  businessType BusinessType? @map("business_type")
+  panOrVatNumber String? @map("pan_or_vat_number")
+  businessRegistrationNumber String? @map("business_registration_number")
+  businessAddressProvince String? @map("business_address_province")
+  businessAddressCity String? @map("business_address_city")
+  businessAddressFull String? @map("business_address_full")
+  bankName String? @map("bank_name")
+  bankAccountNumber String? @map("bank_account_number")
+  bankAccountHolder String? @map("bank_account_holder")
+  storeLogoUrl String? @map("store_logo_url")
+  storeDescription String? @map("store_description")
+  storeSlug String? @map("store_slug")
+  categories String[] @default([])
   documentUrl  String?  @map("document_url")
   contactEmail String?  @map("contact_email")
   contactPhone String?  @map("contact_phone")

@@ -16,6 +16,25 @@ type VendorProfile = {
   id: string;
   vendorId: string;
   businessName: string;
+  businessType: "INDIVIDUAL" | "COMPANY" | null;
+  panOrVatNumber: string | null;
+  businessRegistrationNumber: string | null;
+  businessAddress: {
+    province: string | null;
+    city: string | null;
+    fullAddress: string | null;
+  };
+  bankDetails: {
+    bankName: string | null;
+    accountNumber: string | null;
+    accountHolder: string | null;
+  };
+  storeProfile: {
+    logoUrl: string | null;
+    description: string | null;
+    slug: string | null;
+  };
+  categories: string[];
   contactEmail: string | null;
   contactPhone: string | null;
   createdAt: string;
@@ -26,6 +45,8 @@ type VendorRow = {
   id: string;
   userId: string;
   status: "PENDING" | "APPROVED" | "SUSPENDED";
+  rejectionReason: string | null;
+  termsAccepted: boolean;
   approvedAt: string | null;
   createdAt: string;
   updatedAt: string;
@@ -43,9 +64,24 @@ export default function VendorOnboardingPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const [businessName, setBusinessName] = useState("");
+  const [businessType, setBusinessType] = useState<"individual" | "company">("individual");
+  const [panOrVatNumber, setPanOrVatNumber] = useState("");
+  const [businessRegistrationNumber, setBusinessRegistrationNumber] = useState("");
+  const [businessAddressProvince, setBusinessAddressProvince] = useState("");
+  const [businessAddressCity, setBusinessAddressCity] = useState("");
+  const [businessAddressFull, setBusinessAddressFull] = useState("");
+  const [bankName, setBankName] = useState("");
+  const [bankAccountNumber, setBankAccountNumber] = useState("");
+  const [bankAccountHolder, setBankAccountHolder] = useState("");
+  const [storeLogoUrl, setStoreLogoUrl] = useState("");
+  const [storeDescription, setStoreDescription] = useState("");
+  const [storeSlug, setStoreSlug] = useState("");
+  const [categoriesText, setCategoriesText] = useState("");
+  const [termsAccepted, setTermsAccepted] = useState(false);
   const [documentUrl, setDocumentUrl] = useState("");
   const [contactEmail, setContactEmail] = useState("");
   const [contactPhone, setContactPhone] = useState("");
+  const [step, setStep] = useState(1);
 
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -95,11 +131,25 @@ export default function VendorOnboardingPage() {
     const p = vRes.data.vendor?.profile;
     if (p) {
       setBusinessName(p.businessName);
+      setBusinessType(p.businessType === "COMPANY" ? "company" : "individual");
+      if (p.panOrVatNumber) setPanOrVatNumber(p.panOrVatNumber);
+      if (p.businessRegistrationNumber) setBusinessRegistrationNumber(p.businessRegistrationNumber);
+      if (p.businessAddress.province) setBusinessAddressProvince(p.businessAddress.province);
+      if (p.businessAddress.city) setBusinessAddressCity(p.businessAddress.city);
+      if (p.businessAddress.fullAddress) setBusinessAddressFull(p.businessAddress.fullAddress);
+      if (p.bankDetails.bankName) setBankName(p.bankDetails.bankName);
+      if (p.bankDetails.accountNumber) setBankAccountNumber(p.bankDetails.accountNumber);
+      if (p.bankDetails.accountHolder) setBankAccountHolder(p.bankDetails.accountHolder);
+      if (p.storeProfile.logoUrl) setStoreLogoUrl(p.storeProfile.logoUrl);
+      if (p.storeProfile.description) setStoreDescription(p.storeProfile.description);
+      if (p.storeProfile.slug) setStoreSlug(p.storeProfile.slug);
+      if (p.categories.length > 0) setCategoriesText(p.categories.join(", "));
       if (p.contactEmail) setContactEmail(p.contactEmail);
       if (p.contactPhone) setContactPhone(p.contactPhone);
     } else if (!vRes.data.vendor && meRes.data.user) {
       setContactEmail((prev) => (prev.trim() ? prev : meRes.data.user!.email));
     }
+    setTermsAccepted(Boolean(vRes.data.vendor?.termsAccepted));
     setLoading(false);
   }, []);
 
@@ -132,8 +182,32 @@ export default function VendorOnboardingPage() {
     setSubmitError(null);
     setValidationLines([]);
     setSubmitting(true);
+    const categories = categoriesText
+      .split(",")
+      .map((v) => v.trim())
+      .filter(Boolean);
     const payload = {
       businessName: businessName.trim(),
+      businessType,
+      panOrVatNumber: panOrVatNumber.trim(),
+      businessRegistrationNumber: businessRegistrationNumber.trim(),
+      businessAddress: {
+        province: businessAddressProvince.trim(),
+        city: businessAddressCity.trim(),
+        fullAddress: businessAddressFull.trim(),
+      },
+      bankDetails: {
+        bankName: bankName.trim(),
+        accountNumber: bankAccountNumber.trim(),
+        accountHolder: bankAccountHolder.trim(),
+      },
+      storeProfile: {
+        logoUrl: storeLogoUrl.trim(),
+        description: storeDescription.trim(),
+        slug: storeSlug.trim(),
+      },
+      categories,
+      termsAccepted,
       documentUrl: documentUrl.trim(),
       contactEmail: contactEmail.trim(),
       contactPhone: contactPhone.trim(),
@@ -213,6 +287,8 @@ export default function VendorOnboardingPage() {
   const status = vendor?.status;
   const canEdit = !vendor || status === "PENDING";
   const emailVerifiedJustNow = urlFlags.emailVerified;
+  const canSubmit = canEdit && me.emailVerified;
+  const stepLabels = ["Business details", "Address and bank", "Store profile"];
 
   return (
     <main className="mx-auto max-w-lg p-8">
@@ -274,6 +350,11 @@ export default function VendorOnboardingPage() {
           {vendor.approvedAt ? (
             <p className="mt-1 text-xs text-gray-500">Approved at: {new Date(vendor.approvedAt).toLocaleString()}</p>
           ) : null}
+          {vendor.rejectionReason ? (
+            <p className="mt-2 rounded border border-amber-200 bg-amber-50 p-2 text-sm text-amber-900">
+              Rejection reason: {vendor.rejectionReason}
+            </p>
+          ) : null}
           {vendor.profile ? (
             <p className="mt-2 text-sm text-gray-700">
               Business: <span className="font-medium">{vendor.profile.businessName}</span>
@@ -290,58 +371,265 @@ export default function VendorOnboardingPage() {
         </p>
       ) : (
         <form onSubmit={(e) => void onSubmit(e)} className="mt-6 space-y-4">
-          <div>
-            <label htmlFor="businessName" className="block text-sm font-medium text-gray-700">
-              Business name
-            </label>
-            <input
-              id="businessName"
-              name="businessName"
-              required
-              value={businessName}
-              onChange={(e) => setBusinessName(e.target.value)}
-              className="mt-1 w-full rounded border border-gray-300 px-3 py-2 text-sm"
-            />
+          <div className="rounded border border-gray-200 bg-gray-50 p-3">
+            <p className="text-xs font-medium uppercase tracking-wide text-gray-600">Step {step} of 3</p>
+            <p className="mt-1 text-sm font-medium text-gray-900">{stepLabels[step - 1]}</p>
           </div>
-          <div>
-            <label htmlFor="documentUrl" className="block text-sm font-medium text-gray-700">
-              Document URL (optional)
-            </label>
-            <input
-              id="documentUrl"
-              name="documentUrl"
-              type="url"
-              value={documentUrl}
-              onChange={(e) => setDocumentUrl(e.target.value)}
-              placeholder="https://…"
-              className="mt-1 w-full rounded border border-gray-300 px-3 py-2 text-sm"
-            />
+
+          {step === 1 ? (
+            <>
+              <div>
+                <label htmlFor="businessName" className="block text-sm font-medium text-gray-700">
+                  Business name
+                </label>
+                <input
+                  id="businessName"
+                  name="businessName"
+                  required
+                  value={businessName}
+                  onChange={(e) => setBusinessName(e.target.value)}
+                  className="mt-1 w-full rounded border border-gray-300 px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label htmlFor="businessType" className="block text-sm font-medium text-gray-700">
+                  Business type
+                </label>
+                <select
+                  id="businessType"
+                  value={businessType}
+                  onChange={(e) => setBusinessType(e.target.value as "individual" | "company")}
+                  className="mt-1 w-full rounded border border-gray-300 px-3 py-2 text-sm"
+                >
+                  <option value="individual">Individual</option>
+                  <option value="company">Company</option>
+                </select>
+              </div>
+              <div>
+                <label htmlFor="panOrVatNumber" className="block text-sm font-medium text-gray-700">
+                  PAN or VAT number
+                </label>
+                <input
+                  id="panOrVatNumber"
+                  value={panOrVatNumber}
+                  onChange={(e) => setPanOrVatNumber(e.target.value)}
+                  className="mt-1 w-full rounded border border-gray-300 px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label htmlFor="businessRegistrationNumber" className="block text-sm font-medium text-gray-700">
+                  Business registration number (optional)
+                </label>
+                <input
+                  id="businessRegistrationNumber"
+                  value={businessRegistrationNumber}
+                  onChange={(e) => setBusinessRegistrationNumber(e.target.value)}
+                  className="mt-1 w-full rounded border border-gray-300 px-3 py-2 text-sm"
+                />
+              </div>
+            </>
+          ) : null}
+
+          {step === 2 ? (
+            <>
+              <div>
+                <label htmlFor="businessAddressProvince" className="block text-sm font-medium text-gray-700">
+                  Province
+                </label>
+                <input
+                  id="businessAddressProvince"
+                  value={businessAddressProvince}
+                  onChange={(e) => setBusinessAddressProvince(e.target.value)}
+                  className="mt-1 w-full rounded border border-gray-300 px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label htmlFor="businessAddressCity" className="block text-sm font-medium text-gray-700">
+                  City
+                </label>
+                <input
+                  id="businessAddressCity"
+                  value={businessAddressCity}
+                  onChange={(e) => setBusinessAddressCity(e.target.value)}
+                  className="mt-1 w-full rounded border border-gray-300 px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label htmlFor="businessAddressFull" className="block text-sm font-medium text-gray-700">
+                  Full business address
+                </label>
+                <textarea
+                  id="businessAddressFull"
+                  value={businessAddressFull}
+                  onChange={(e) => setBusinessAddressFull(e.target.value)}
+                  className="mt-1 w-full rounded border border-gray-300 px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label htmlFor="bankName" className="block text-sm font-medium text-gray-700">
+                  Bank name
+                </label>
+                <input
+                  id="bankName"
+                  value={bankName}
+                  onChange={(e) => setBankName(e.target.value)}
+                  className="mt-1 w-full rounded border border-gray-300 px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label htmlFor="bankAccountNumber" className="block text-sm font-medium text-gray-700">
+                  Account number
+                </label>
+                <input
+                  id="bankAccountNumber"
+                  value={bankAccountNumber}
+                  onChange={(e) => setBankAccountNumber(e.target.value)}
+                  className="mt-1 w-full rounded border border-gray-300 px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label htmlFor="bankAccountHolder" className="block text-sm font-medium text-gray-700">
+                  Account holder
+                </label>
+                <input
+                  id="bankAccountHolder"
+                  value={bankAccountHolder}
+                  onChange={(e) => setBankAccountHolder(e.target.value)}
+                  className="mt-1 w-full rounded border border-gray-300 px-3 py-2 text-sm"
+                />
+              </div>
+            </>
+          ) : null}
+
+          {step === 3 ? (
+            <>
+              <div>
+                <label htmlFor="storeLogoUrl" className="block text-sm font-medium text-gray-700">
+                  Store logo URL (optional)
+                </label>
+                <input
+                  id="storeLogoUrl"
+                  type="url"
+                  value={storeLogoUrl}
+                  onChange={(e) => setStoreLogoUrl(e.target.value)}
+                  className="mt-1 w-full rounded border border-gray-300 px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label htmlFor="storeDescription" className="block text-sm font-medium text-gray-700">
+                  Store description
+                </label>
+                <textarea
+                  id="storeDescription"
+                  value={storeDescription}
+                  onChange={(e) => setStoreDescription(e.target.value)}
+                  className="mt-1 w-full rounded border border-gray-300 px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label htmlFor="storeSlug" className="block text-sm font-medium text-gray-700">
+                  Store slug
+                </label>
+                <input
+                  id="storeSlug"
+                  value={storeSlug}
+                  onChange={(e) => setStoreSlug(e.target.value)}
+                  className="mt-1 w-full rounded border border-gray-300 px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label htmlFor="categories" className="block text-sm font-medium text-gray-700">
+                  Categories (comma separated)
+                </label>
+                <input
+                  id="categories"
+                  value={categoriesText}
+                  onChange={(e) => setCategoriesText(e.target.value)}
+                  placeholder="fashion, home, electronics"
+                  className="mt-1 w-full rounded border border-gray-300 px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label htmlFor="documentUrl" className="block text-sm font-medium text-gray-700">
+                  Document URL (optional)
+                </label>
+                <input
+                  id="documentUrl"
+                  name="documentUrl"
+                  type="url"
+                  value={documentUrl}
+                  onChange={(e) => setDocumentUrl(e.target.value)}
+                  placeholder="https://…"
+                  className="mt-1 w-full rounded border border-gray-300 px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label htmlFor="contactEmail" className="block text-sm font-medium text-gray-700">
+                  Contact email (optional)
+                </label>
+                <input
+                  id="contactEmail"
+                  name="contactEmail"
+                  type="email"
+                  value={contactEmail}
+                  onChange={(e) => setContactEmail(e.target.value)}
+                  className="mt-1 w-full rounded border border-gray-300 px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label htmlFor="contactPhone" className="block text-sm font-medium text-gray-700">
+                  Contact phone (optional)
+                </label>
+                <input
+                  id="contactPhone"
+                  name="contactPhone"
+                  value={contactPhone}
+                  onChange={(e) => setContactPhone(e.target.value)}
+                  className="mt-1 w-full rounded border border-gray-300 px-3 py-2 text-sm"
+                />
+              </div>
+              <label className="flex items-start gap-2 rounded border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700">
+                <input
+                  type="checkbox"
+                  checked={termsAccepted}
+                  onChange={(e) => setTermsAccepted(e.target.checked)}
+                  className="mt-0.5"
+                />
+                <span>I accept the vendor onboarding terms and policy.</span>
+              </label>
+            </>
+          ) : null}
+
+          <div className="flex items-center justify-between gap-3">
+            <button
+              type="button"
+              onClick={() => setStep((s) => Math.max(1, s - 1))}
+              disabled={step === 1}
+              className="rounded border border-gray-300 px-4 py-2 text-sm font-medium text-gray-800 disabled:opacity-50"
+            >
+              Previous
+            </button>
+            {step < 3 ? (
+              <button
+                type="button"
+                onClick={() => setStep((s) => Math.min(3, s + 1))}
+                className="rounded border border-gray-300 px-4 py-2 text-sm font-medium text-gray-800"
+              >
+                Next
+              </button>
+            ) : (
+              <button
+                type="submit"
+                disabled={submitting || !canSubmit}
+                className="rounded bg-gray-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+              >
+                {submitting ? "Submitting…" : vendor ? "Update application" : "Submit application"}
+              </button>
+            )}
           </div>
-          <div>
-            <label htmlFor="contactEmail" className="block text-sm font-medium text-gray-700">
-              Contact email (optional)
-            </label>
-            <input
-              id="contactEmail"
-              name="contactEmail"
-              type="email"
-              value={contactEmail}
-              onChange={(e) => setContactEmail(e.target.value)}
-              className="mt-1 w-full rounded border border-gray-300 px-3 py-2 text-sm"
-            />
-          </div>
-          <div>
-            <label htmlFor="contactPhone" className="block text-sm font-medium text-gray-700">
-              Contact phone (optional)
-            </label>
-            <input
-              id="contactPhone"
-              name="contactPhone"
-              value={contactPhone}
-              onChange={(e) => setContactPhone(e.target.value)}
-              className="mt-1 w-full rounded border border-gray-300 px-3 py-2 text-sm"
-            />
-          </div>
+          {!me.emailVerified ? (
+            <p className="text-xs text-amber-800">Verify your email before submitting this application.</p>
+          ) : null}
 
           {submitError ? (
             <div className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-900">
@@ -356,13 +644,6 @@ export default function VendorOnboardingPage() {
             </div>
           ) : null}
 
-          <button
-            type="submit"
-            disabled={submitting}
-            className="rounded bg-gray-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-          >
-            {submitting ? "Submitting…" : vendor ? "Update application" : "Submit application"}
-          </button>
         </form>
       )}
 
