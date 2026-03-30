@@ -11,7 +11,20 @@ type MeUser = {
   emailVerified: boolean;
 };
 
-type AuthResponse = { user: MeUser };
+type AuthResponse = {
+  user: MeUser;
+  verification?: { sent?: boolean; devVerificationUrl?: string };
+};
+
+async function ensureSignedInAfterSignup(email: string, password: string): Promise<void> {
+  const meRes = await fetchApiJson<{ user: MeUser | null }>("/api/auth/me");
+  if (meRes.ok && meRes.data.user) return;
+  await fetchApiJson<AuthResponse>("/api/auth/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+  });
+}
 
 export function BecomeVendorClient() {
   const router = useRouter();
@@ -28,10 +41,14 @@ export function BecomeVendorClient() {
     setValidationLines([]);
     setSubmitting(true);
     const path = mode === "login" ? "/api/auth/login" : "/api/auth/signup";
+    const body =
+      mode === "signup"
+        ? { email, password, intent: "vendor" as const }
+        : { email, password };
     const res = await fetchApiJson<AuthResponse>(path, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify(body),
     });
     setSubmitting(false);
     if (!res.ok) {
@@ -39,7 +56,18 @@ export function BecomeVendorClient() {
       if (res.details) setValidationLines(formatValidationDetails(res.details));
       return;
     }
-    router.push("/vendor/onboarding");
+    if (mode === "signup" && res.ok) {
+      const devUrl = res.data.verification?.devVerificationUrl;
+      if (devUrl && typeof window !== "undefined") {
+        try {
+          sessionStorage.setItem("bazaarlink_dev_email_verify_url", devUrl);
+        } catch {
+          /* ignore */
+        }
+      }
+      await ensureSignedInAfterSignup(email, password);
+    }
+    router.push(mode === "signup" ? "/vendor/onboarding?checkEmail=1" : "/vendor/onboarding");
     router.refresh();
   }
 

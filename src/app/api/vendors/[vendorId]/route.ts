@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireVendor } from "@/lib/auth/rbac";
-import { toNonAdminVendorResponse, updateVendorProfile } from "@/services/vendor";
+import { toVendorOwnerSelfResponse, updateVendorProfile } from "@/services/vendor";
 import { updateVendorProfileSchema, vendorIdParamSchema } from "@/lib/validations/vendor";
 import { prisma } from "@/lib/db";
 import { fromServiceError, parseJsonBody, validationError, apiError } from "@/lib/api/errors";
@@ -23,7 +23,7 @@ export async function GET(
     if (!vendor) {
       return apiError("Vendor not found", { status: 404, code: "VENDOR_NOT_FOUND" });
     }
-    return NextResponse.json({ vendor: toNonAdminVendorResponse(vendor) });
+    return NextResponse.json({ vendor: toVendorOwnerSelfResponse(vendor) });
   } catch (e) {
     return fromServiceError(e, { error: "Failed to get vendor", code: "GET_VENDOR_FAILED" });
   }
@@ -56,7 +56,7 @@ export async function PATCH(
     if (!vendor || vendor.userId !== user.id) {
       return apiError("Vendor not found", { status: 404, code: "VENDOR_NOT_FOUND" });
     }
-    return NextResponse.json({ vendor: toNonAdminVendorResponse(vendor) });
+    return NextResponse.json({ vendor: toVendorOwnerSelfResponse(vendor) });
   } catch (e) {
     return fromServiceError(e, { error: "Update failed", code: "UPDATE_VENDOR_FAILED" });
   }

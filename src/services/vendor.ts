@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import type { RegisterVendorInput, UpdateVendorProfileInput } from "@/lib/validations/vendor";
 import { Prisma, UserRole, VendorStatus } from "@prisma/client";
+import { notifyAdminVendorApplicationSubmitted } from "@/lib/admin-notify";
 
 type VendorWithProfile = Prisma.VendorGetPayload<{ include: { profile: true } }>;
 
@@ -43,6 +44,20 @@ export function toNonAdminVendorResponse(vendor: VendorWithProfile) {
   };
 }
 
+/** Vendor owner self-service (onboarding / GET /api/vendors/me): includes contact fields; never `documentUrl`. */
+export function toVendorOwnerSelfResponse(vendor: VendorWithProfile) {
+  const base = toNonAdminVendorResponse(vendor);
+  if (!vendor.profile || !base.profile) return base;
+  return {
+    ...base,
+    profile: {
+      ...base.profile,
+      contactEmail: vendor.profile.contactEmail,
+      contactPhone: vendor.profile.contactPhone,
+    },
+  };
+}
+
 /** Vendor snippet for public catalog (no PII or moderation fields). */
 export function toPublicProductVendor(vendor: { id: string; profile: { businessName: string } | null }) {
   return {
@@ -67,18 +82,12 @@ export async function submitVendorOnboarding(userId: string, input: RegisterVend
   if (!user) {
     throw createServiceError("Unauthorized", 401, "UNAUTHORIZED");
   }
-  if (!user.emailVerified) {
-    throw createServiceError(
-      "Email must be verified before vendor onboarding submission",
-      403,
-      "EMAIL_NOT_VERIFIED"
-    );
-  }
   if (user.role === UserRole.ADMIN) {
     throw createServiceError("Admin users cannot submit vendor onboarding", 403, "ROLE_NOT_ALLOWED");
   }
 
   try {
+    let isFirstApplication = false;
     const vendor = await prisma.$transaction(async (tx) => {
       const existingVendor = await tx.vendor.findUnique({
         where: { userId },
@@ -93,6 +102,7 @@ export async function submitVendorOnboarding(userId: string, input: RegisterVend
       };
 
       if (!existingVendor) {
+        isFirstApplication = true;
         if (user.role === UserRole.CUSTOMER) {
           await tx.user.update({
             where: { id: userId },
@@ -140,6 +150,14 @@ export async function submitVendorOnboarding(userId: string, input: RegisterVend
 
       return updatedVendor;
     });
+
+    if (isFirstApplication) {
+      notifyAdminVendorApplicationSubmitted({
+        vendorId: vendor.id,
+        accountEmail: user.email,
+        businessName: input.businessName.trim(),
+      });
+    }
 
     return vendor;
   } catch (e) {

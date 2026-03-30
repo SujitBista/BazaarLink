@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth/rbac";
-import { getVendorByUserId, toNonAdminVendorResponse } from "@/services/vendor";
+import { getVendorByUserId, toVendorOwnerSelfResponse } from "@/services/vendor";
 import { fromServiceError } from "@/lib/api/errors";
 
 export async function GET() {
@@ -10,7 +10,7 @@ export async function GET() {
     if (!vendor) {
       return NextResponse.json({ vendor: null }, { status: 200 });
     }
-    return NextResponse.json({ vendor: toNonAdminVendorResponse(vendor) });
+    return NextResponse.json({ vendor: toVendorOwnerSelfResponse(vendor) });
   } catch (e) {
     return fromServiceError(e, { error: "Failed to get vendor", code: "GET_VENDOR_FAILED" });
   }

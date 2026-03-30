@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { fetchApiJson, formatValidationDetails } from "@/lib/client/api-json";
 
 type MeUser = {
@@ -15,9 +15,11 @@ type Props = {
   redirectTo: string;
   title: string;
   subtitle?: string;
+  /** Extra content below the form (e.g. links to signup). */
+  extraLinks?: ReactNode;
 };
 
-export function LoginForm({ redirectTo, title, subtitle }: Props) {
+export function LoginForm({ redirectTo, title, subtitle, extraLinks }: Props) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -101,6 +103,13 @@ export function LoginForm({ redirectTo, title, subtitle }: Props) {
           {submitting ? "Signing in…" : "Sign in"}
         </button>
       </form>
+
+      {extraLinks != null ? (
+        <div className="mt-6 text-center text-sm text-gray-600">
+          {/* TS 5.9: server-passed JSX widens past DOM `ReactNode`; safe at runtime */}
+          {extraLinks as never}
+        </div>
+      ) : null}
 
       <p className="mt-8 text-center text-sm text-gray-600">
         <a href="/" className="text-orange-700 underline">

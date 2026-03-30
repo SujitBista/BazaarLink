@@ -202,7 +202,7 @@ export default function VendorProductsPage() {
         <p className="mt-3 text-gray-700">Sign in to manage your catalog.</p>
         {loadError ? <p className="mt-3 text-sm text-red-800">{loadError}</p> : null}
         <a
-          href="/login?next=/vendor/products"
+          href="/vendor/login?next=/vendor/products"
           className="mt-6 inline-block rounded-md bg-orange-600 px-4 py-2 text-sm font-medium text-white shadow hover:bg-orange-700"
         >
           Sign in

@@ -141,9 +141,12 @@ export default function ShopBrowse({ initialCategorySlug, initialQ }: Props) {
           <h1 className="text-2xl font-semibold text-gray-900">Shop</h1>
           <p className="mt-1 text-sm text-gray-600">Browse by category or search active listings from approved sellers.</p>
         </div>
-        <nav className="flex gap-4 text-sm">
+        <nav className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
           <a href="/cart" className="text-orange-700 underline">
             Cart
+          </a>
+          <a href="/vendor" className="text-stone-600 underline">
+            Vendor
           </a>
           <a href="/" className="text-gray-600 underline">
             Home

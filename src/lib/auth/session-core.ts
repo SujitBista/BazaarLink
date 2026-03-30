@@ -11,6 +11,7 @@ const MAX_AGE = 60 * 60 * 24 * 7; // 7 days
 
 export async function createSession(user: SessionUser): Promise<string> {
   const secret = new TextEncoder().encode(getSessionSecret());
+  const expiresAt = Math.floor(Date.now() / 1000) + MAX_AGE;
   const token = await new SignJWT({
     id: user.id,
     email: user.email,
@@ -18,7 +19,7 @@ export async function createSession(user: SessionUser): Promise<string> {
     emailVerified: user.emailVerified,
   })
     .setProtectedHeader({ alg: "HS256" })
-    .setExpirationTime(MAX_AGE)
+    .setExpirationTime(expiresAt)
     .setIssuedAt()
     .sign(secret);
   return token;

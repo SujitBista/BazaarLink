@@ -3,6 +3,7 @@
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { fetchApiJson } from "@/lib/client/api-json";
+import { ProductImage } from "@/components/product-image";
 
 type Variant = { id: string; price: string; stock: number; sku: string | null };
 type ProductDetail = {
@@ -97,12 +98,7 @@ export default function ProductDetailPage() {
       </a>
       <div className="mt-6 grid gap-8 md:grid-cols-2">
         <div className="aspect-square overflow-hidden rounded-lg bg-gray-100">
-          {img ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={img} alt="" className="h-full w-full object-cover" />
-          ) : (
-            <div className="flex h-full items-center justify-center text-gray-400">No image</div>
-          )}
+          <ProductImage src={img} alt={product.name} />
         </div>
         <div>
           <h1 className="text-2xl font-semibold text-gray-900">{product.name}</h1>
