@@ -65,7 +65,7 @@ export function toNonAdminVendorResponse(vendor: VendorWithProfile) {
   };
 }
 
-/** Vendor owner self-service (onboarding / GET /api/vendors/me): includes contact fields; never `documentUrl`. */
+/** Vendor owner self-service (onboarding / GET /api/vendors/me): includes contact fields and KYC doc URL for the owner. */
 export function toVendorOwnerSelfResponse(vendor: VendorWithProfile) {
   const base = toNonAdminVendorResponse(vendor);
   if (!vendor.profile || !base.profile) return base;
@@ -75,6 +75,7 @@ export function toVendorOwnerSelfResponse(vendor: VendorWithProfile) {
       ...base.profile,
       contactEmail: vendor.profile.contactEmail,
       contactPhone: vendor.profile.contactPhone,
+      documentUrl: vendor.profile.documentUrl,
     },
   };
 }
@@ -94,6 +95,35 @@ export async function getVendorByUserId(userId: string) {
   });
 }
 
+/** Public API + onboarding: slug availability for the signed-in user (excludes their own vendor). */
+export async function checkStoreSlugAvailability(slug: string, userId: string) {
+  const normalized = slug.trim().toLowerCase();
+  if (normalized.length < 3) {
+    return { available: false as const, normalized, reason: "SHORT" as const };
+  }
+  if (normalized.length > 64) {
+    return { available: false as const, normalized, reason: "LONG" as const };
+  }
+  if (!/^[a-z0-9-]+$/.test(normalized)) {
+    return { available: false as const, normalized, reason: "INVALID" as const };
+  }
+
+  const myVendor = await prisma.vendor.findUnique({
+    where: { userId },
+    select: { id: true },
+  });
+
+  const conflict = await prisma.vendorProfile.findFirst({
+    where: {
+      storeSlug: normalized,
+      ...(myVendor ? { vendorId: { not: myVendor.id } } : {}),
+    },
+    select: { id: true },
+  });
+
+  return { available: !conflict, normalized };
+}
+
 export async function submitVendorOnboarding(userId: string, input: RegisterVendorInput) {
   const user = await prisma.user.findUnique({
     where: { id: userId },
@@ -108,6 +138,22 @@ export async function submitVendorOnboarding(userId: string, input: RegisterVend
   }
   if (!user.emailVerified) {
     throw createServiceError("Email not verified", 403, "EMAIL_NOT_VERIFIED");
+  }
+
+  const slugNormalized = input.storeProfile.slug.trim().toLowerCase();
+  const myVendorForSlug = await prisma.vendor.findUnique({
+    where: { userId },
+    select: { id: true },
+  });
+  const slugTaken = await prisma.vendorProfile.findFirst({
+    where: {
+      storeSlug: slugNormalized,
+      ...(myVendorForSlug ? { vendorId: { not: myVendorForSlug.id } } : {}),
+    },
+    select: { id: true },
+  });
+  if (slugTaken) {
+    throw createServiceError("Store slug is already taken", 409, "STORE_SLUG_TAKEN");
   }
 
   try {
@@ -131,7 +177,7 @@ export async function submitVendorOnboarding(userId: string, input: RegisterVend
         bankAccountHolder: input.bankDetails.accountHolder.trim(),
         storeLogoUrl: normalizeOptional(input.storeProfile.logoUrl),
         storeDescription: input.storeProfile.description.trim(),
-        storeSlug: input.storeProfile.slug.trim(),
+        storeSlug: slugNormalized,
         categories: input.categories.map((category) => category.trim()).filter(Boolean),
         documentUrl: normalizeOptional(input.documentUrl),
         contactEmail: normalizeOptional(input.contactEmail),
@@ -203,6 +249,10 @@ export async function submitVendorOnboarding(userId: string, input: RegisterVend
     return vendor;
   } catch (e) {
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
+      const target = (e.meta as { target?: string[] })?.target;
+      if (Array.isArray(target) && target.includes("store_slug")) {
+        throw createServiceError("Store slug is already taken", 409, "STORE_SLUG_TAKEN");
+      }
       throw createServiceError("Vendor onboarding already exists for this user", 409, "VENDOR_EXISTS");
     }
     throw e;

@@ -3,7 +3,7 @@ import { z } from "zod";
 const optionalPhone = z
   .string()
   .trim()
-  .regex(/^\+?[0-9()\-\s]{7,20}$/, "Invalid contact phone format")
+  .regex(/^\+?[0-9()\-\s]{7,20}$/, "Use 7–20 digits with optional +, spaces, or dashes")
   .optional()
   .or(z.literal(""));
 
@@ -25,15 +25,24 @@ const bankDetailsSchema = z.object({
   accountHolder: nonEmptyString,
 });
 
+const httpUrlOrEmpty = z
+  .string()
+  .trim()
+  .refine((s) => s === "" || /^https?:\/\/.+/i.test(s), "Must be a valid http(s) URL");
+
 const storeProfileSchema = z.object({
-  logoUrl: z.string().trim().url("Invalid logo URL").optional().or(z.literal("")),
-  description: nonEmptyString,
+  logoUrl: httpUrlOrEmpty,
+  description: z
+    .string()
+    .trim()
+    .min(1, "Describe your store")
+    .max(2000, "Description must be at most 2000 characters"),
   slug: z
     .string()
     .trim()
     .min(3, "Slug must be at least 3 characters")
     .max(64, "Slug must be at most 64 characters")
-    .regex(/^[a-z0-9-]+$/, "Slug can only contain lowercase letters, numbers, and hyphens"),
+    .regex(/^[a-z0-9-]+$/, "Use lowercase letters, numbers, and hyphens only (no spaces)"),
 });
 
 export const registerVendorSchema = z.object({
@@ -46,14 +55,14 @@ export const registerVendorSchema = z.object({
   storeProfile: storeProfileSchema,
   categories: z.array(nonEmptyString).min(1, "At least one category is required"),
   termsAccepted: z.boolean().refine((v) => v === true, "You must accept the terms to continue"),
-  documentUrl: z.string().url("Invalid document URL").optional().or(z.literal("")),
+  documentUrl: httpUrlOrEmpty,
   contactEmail: z.string().trim().email("Invalid contact email").optional().or(z.literal("")),
   contactPhone: optionalPhone,
 });
 
 export const updateVendorProfileSchema = z.object({
   businessName: z.string().trim().min(1, "Business name is required").optional(),
-  documentUrl: z.string().url("Invalid document URL").optional().or(z.literal("")),
+  documentUrl: httpUrlOrEmpty,
   contactEmail: z.string().trim().email("Invalid contact email").optional().or(z.literal("")),
   contactPhone: optionalPhone,
 });

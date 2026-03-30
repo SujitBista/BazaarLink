@@ -226,4 +226,27 @@ describe("Phase 1 integration and edge cases", () => {
     const reinstated = await approveVendor(second.id, admin.id);
     expect(reinstated.status).toBe(VendorStatus.APPROVED);
   });
+
+  it("rejects duplicate store slug across vendors", async () => {
+    const userA = await signup({ email: uniqueEmail("slug-a"), password: "Pass1234" });
+    const userB = await signup({ email: uniqueEmail("slug-b"), password: "Pass1234" });
+    await prisma.user.updateMany({
+      where: { id: { in: [userA.id, userB.id] } },
+      data: { emailVerified: true },
+    });
+
+    await submitVendorOnboarding(userA.id, onboardingPayload);
+
+    const second = (await submitVendorOnboarding(userB.id, {
+      ...onboardingPayload,
+      businessName: "Other Business",
+      panOrVatNumber: "PAN9999999",
+      storeProfile: {
+        ...onboardingPayload.storeProfile,
+        slug: "acme-traders",
+      },
+    }).catch((e: Error & { code?: string }) => e)) as Error & { code?: string };
+
+    expect(second.code).toBe("STORE_SLUG_TAKEN");
+  });
 });
