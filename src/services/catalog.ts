@@ -234,13 +234,72 @@ export async function getProductById(id: string) {
   });
 }
 
-/** Public list: ACTIVE products only, optional category filter */
-export async function listProductsPublic(filters?: { categoryId?: string; categorySlug?: string }) {
-  const where: { status: "ACTIVE"; categoryId?: string; category?: { slug: string } } = {
+async function getCategoryIdsIncludingDescendants(rootId: string): Promise<string[]> {
+  const ids: string[] = [];
+  const queue = [rootId];
+  while (queue.length) {
+    const id = queue.shift()!;
+    ids.push(id);
+    const children = await prisma.category.findMany({
+      where: { parentId: id },
+      select: { id: true },
+    });
+    for (const c of children) queue.push(c.id);
+  }
+  return ids;
+}
+
+async function resolveCategoryFilter(filters?: {
+  categoryId?: string;
+  categorySlug?: string;
+  includeSubcategories?: boolean;
+}): Promise<string[] | undefined> {
+  if (!filters?.categoryId && !filters?.categorySlug) return undefined;
+  let rootId = filters.categoryId;
+  if (!rootId && filters.categorySlug) {
+    const cat = await prisma.category.findUnique({
+      where: { slug: filters.categorySlug },
+      select: { id: true },
+    });
+    if (!cat) return [];
+    rootId = cat.id;
+  }
+  if (!rootId) return undefined;
+  const includeSubs = filters.includeSubcategories !== false;
+  if (!includeSubs) return [rootId];
+  return getCategoryIdsIncludingDescendants(rootId);
+}
+
+/** Public list: ACTIVE products only; optional category (includes child categories by default) and search on name/description */
+export async function listProductsPublic(filters?: {
+  categoryId?: string;
+  categorySlug?: string;
+  search?: string;
+  includeSubcategories?: boolean;
+}) {
+  const q = filters?.search?.trim();
+  const categoryIds = await resolveCategoryFilter(filters);
+
+  if (categoryIds !== undefined && categoryIds.length === 0) {
+    return [];
+  }
+
+  const where: Prisma.ProductWhereInput = {
     status: "ACTIVE",
+    ...(categoryIds != null && categoryIds.length > 0 ? { categoryId: { in: categoryIds } } : {}),
   };
-  if (filters?.categoryId) where.categoryId = filters.categoryId;
-  if (filters?.categorySlug) where.category = { slug: filters.categorySlug };
+
+  if (q) {
+    where.AND = [
+      {
+        OR: [
+          { name: { contains: q, mode: "insensitive" } },
+          { description: { contains: q, mode: "insensitive" } },
+        ],
+      },
+    ];
+  }
+
   const rows = await prisma.product.findMany({
     where,
     include: {

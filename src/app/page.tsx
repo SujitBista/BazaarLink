@@ -48,7 +48,7 @@ export default function HomePage() {
         <li>GET /api/categories/[slug] – get category by slug (public)</li>
         <li>GET/POST /api/admin/categories – list/create categories (ADMIN)</li>
         <li>GET/PATCH/DELETE /api/admin/categories/[id] – category CRUD (ADMIN)</li>
-        <li>GET /api/products – list ACTIVE products (public)</li>
+        <li>GET /api/products – list ACTIVE products (public); query: categoryId, categorySlug, q/search, includeSubcategories=false</li>
         <li>GET /api/products/[id] – get product (public ACTIVE; owner sees DRAFT)</li>
         <li>GET/POST /api/vendors/me/products – list/create my products (VENDOR)</li>
         <li>GET/PATCH/DELETE /api/vendors/me/products/[id] – product CRUD (VENDOR)</li>
