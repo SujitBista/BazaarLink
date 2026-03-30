@@ -15,3 +15,20 @@ export function getSessionSecret(): string {
   }
   return secret;
 }
+
+/** Platform commission percentage (0–100) applied at payment capture. */
+export function getDefaultCommissionPercent(): number {
+  const raw = process.env.DEFAULT_COMMISSION_PERCENT;
+  if (raw == null || raw === "") return 10;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 0 || n > 100) return 10;
+  return n;
+}
+
+/** Flat shipping for checkout (currency units matching product prices). */
+export function getDefaultShippingAmount(): number {
+  const raw = process.env.DEFAULT_SHIPPING_AMOUNT;
+  if (raw == null || raw === "") return 5;
+  const n = Number(raw);
+  return Number.isFinite(n) && n >= 0 ? n : 5;
+}

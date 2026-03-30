@@ -1,23 +1,20 @@
 import { NextResponse } from "next/server";
 import { AUTH_ERROR_INVALID_CREDENTIALS, loginWithSession } from "@/services/auth";
 import { loginSchema } from "@/lib/validations/auth";
+import { fromServiceError, parseJsonBody, validationError } from "@/lib/api/errors";
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
+    const parsedBody = await parseJsonBody(request);
+    if (!parsedBody.ok) return parsedBody.response;
+    const body = parsedBody.body;
     const parsed = loginSchema.safeParse(body);
     if (!parsed.success) {
-      return NextResponse.json(
-        { error: "Validation failed", details: parsed.error.flatten() },
-        { status: 400 }
-      );
+      return validationError(parsed.error.flatten());
     }
     const user = await loginWithSession(parsed.data);
     return NextResponse.json({ user });
   } catch (e) {
-    const err = e as Error & { statusCode?: number };
-    const status = err.statusCode ?? 500;
-    const message = status === 401 ? AUTH_ERROR_INVALID_CREDENTIALS : err.message ?? "Login failed";
-    return NextResponse.json({ error: message }, { status });
+    return fromServiceError(e, { error: AUTH_ERROR_INVALID_CREDENTIALS, code: "LOGIN_FAILED" });
   }
 }

@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { toPublicProductVendor } from "@/services/vendor";
 import type { CreateCategoryInput, UpdateCategoryInput, CreateProductInput, UpdateProductInput } from "@/lib/validations/catalog";
 import { VendorStatus, ProductStatus } from "@prisma/client";
 import { Decimal } from "@prisma/client/runtime/library";
@@ -240,7 +241,7 @@ export async function listProductsPublic(filters?: { categoryId?: string; catego
   };
   if (filters?.categoryId) where.categoryId = filters.categoryId;
   if (filters?.categorySlug) where.category = { slug: filters.categorySlug };
-  return prisma.product.findMany({
+  const rows = await prisma.product.findMany({
     where,
     include: {
       images: { orderBy: { sortOrder: "asc" }, take: 1 },
@@ -250,6 +251,10 @@ export async function listProductsPublic(filters?: { categoryId?: string; catego
     },
     orderBy: { createdAt: "desc" },
   });
+  return rows.map((p) => ({
+    ...p,
+    vendor: toPublicProductVendor(p.vendor),
+  }));
 }
 
 /** Vendor's own products */

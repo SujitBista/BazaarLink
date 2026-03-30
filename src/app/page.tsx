@@ -2,7 +2,36 @@ export default function HomePage() {
   return (
     <main className="min-h-screen p-8">
       <h1 className="text-2xl font-bold">BazaarLink</h1>
-      <p className="mt-2 text-gray-600">Multi-vendor marketplace – Phase 1: Auth, vendor onboarding, product catalog.</p>
+      <p className="mt-2 text-gray-600">Multi-vendor marketplace — browse, cart, checkout, and dashboards.</p>
+      <nav className="mt-4 flex flex-wrap gap-4 text-sm">
+        <a href="/shop" className="text-orange-700 underline">
+          Shop
+        </a>
+        <a href="/cart" className="text-orange-700 underline">
+          Cart
+        </a>
+        <a href="/checkout" className="text-orange-700 underline">
+          Checkout
+        </a>
+        <a href="/become-vendor" className="text-orange-700 underline">
+          Become a vendor
+        </a>
+        <a href="/vendor/onboarding" className="text-blue-700 underline">
+          Vendor onboarding
+        </a>
+        <a href="/vendor/dashboard" className="text-blue-700 underline">
+          Vendor dashboard
+        </a>
+        <a href="/account/orders" className="text-blue-700 underline">
+          My orders
+        </a>
+        <a href="/admin/vendors" className="text-blue-700 underline">
+          Admin · Vendors
+        </a>
+        <a href="/admin/analytics" className="text-blue-700 underline">
+          Admin · Analytics
+        </a>
+      </nav>
       <ul className="mt-4 list-inside list-disc text-sm text-gray-500">
         <li>POST /api/auth/signup – signup (body: email, password, role)</li>
         <li>POST /api/auth/login – login</li>

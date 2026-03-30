@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth/rbac";
 import { listPendingVendors, listVendorsForAdmin } from "@/services/vendor";
 import { adminListVendorsQuerySchema } from "@/lib/validations/vendor";
+import { fromServiceError, validationError } from "@/lib/api/errors";
 
 export async function GET(request: Request) {
   try {
@@ -13,10 +14,7 @@ export async function GET(request: Request) {
     });
 
     if (!parsed.success) {
-      return NextResponse.json(
-        { error: "Validation failed", code: "VALIDATION_ERROR", details: parsed.error.flatten() },
-        { status: 400 }
-      );
+      return validationError(parsed.error.flatten());
     }
 
     const vendors = parsed.data.pending
@@ -24,11 +22,6 @@ export async function GET(request: Request) {
       : await listVendorsForAdmin(parsed.data.status);
     return NextResponse.json({ vendors });
   } catch (e) {
-    const err = e as Error & { statusCode?: number; code?: string };
-    const status = err.statusCode ?? 500;
-    return NextResponse.json(
-      { error: err.message ?? "Failed to list vendors", code: err.code ?? "LIST_VENDORS_FAILED" },
-      { status }
-    );
+    return fromServiceError(e, { error: "Failed to list vendors", code: "LIST_VENDORS_FAILED" });
   }
 }

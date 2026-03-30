@@ -1,22 +1,20 @@
 import { NextResponse } from "next/server";
 import { signupWithSession } from "@/services/auth";
 import { signupSchema } from "@/lib/validations/auth";
+import { fromServiceError, parseJsonBody, validationError } from "@/lib/api/errors";
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
+    const parsedBody = await parseJsonBody(request);
+    if (!parsedBody.ok) return parsedBody.response;
+    const body = parsedBody.body;
     const parsed = signupSchema.safeParse(body);
     if (!parsed.success) {
-      return NextResponse.json(
-        { error: "Validation failed", details: parsed.error.flatten() },
-        { status: 400 }
-      );
+      return validationError(parsed.error.flatten());
     }
     const user = await signupWithSession(parsed.data);
     return NextResponse.json({ user });
   } catch (e) {
-    const err = e as Error & { statusCode?: number };
-    const status = err.statusCode ?? 500;
-    return NextResponse.json({ error: err.message ?? "Signup failed" }, { status });
+    return fromServiceError(e, { error: "Signup failed", code: "SIGNUP_FAILED" });
   }
 }
