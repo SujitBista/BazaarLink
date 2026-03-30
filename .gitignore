@@ -46,3 +46,6 @@ coverage/
 
 # Misc
 *.pem
+
+# Local dev uploads (S3 used in production)
+public/uploads/vendor/

@@ -131,7 +131,7 @@ model VendorProfile {
   bankAccountHolder String? @map("bank_account_holder")
   storeLogoUrl String? @map("store_logo_url")
   storeDescription String? @map("store_description")
-  storeSlug String? @map("store_slug")
+  storeSlug String? @unique @map("store_slug")
   categories String[] @default([])
   documentUrl  String?  @map("document_url")
   contactEmail String?  @map("contact_email")
