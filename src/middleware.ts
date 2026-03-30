@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { COOKIE_NAME, verifySessionToken } from "@/lib/auth/session";
+import { COOKIE_NAME, verifySessionToken } from "@/lib/auth/session-core";
 
 /**
  * Ensures a valid session cookie exists before hitting protected API routes.

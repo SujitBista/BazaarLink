@@ -14,12 +14,19 @@ type OrderItemRow = {
 export default function VendorDashboardPage() {
   const [items, setItems] = useState<OrderItemRow[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [needsSignIn, setNeedsSignIn] = useState(false);
 
   const load = useCallback(async () => {
     setError(null);
+    setNeedsSignIn(false);
     const res = await fetchApiJson<{ orderItems: OrderItemRow[] }>("/api/vendors/me/orders");
     if (!res.ok) {
-      if (res.status === 401 || res.status === 403) {
+      if (res.status === 401) {
+        setNeedsSignIn(true);
+        setError("Sign in with a vendor account to view this dashboard.");
+        return;
+      }
+      if (res.status === 403) {
         setError("Vendor access only. Complete onboarding and approval first.");
         return;
       }
@@ -42,10 +49,21 @@ export default function VendorDashboardPage() {
         <a href="/vendor/onboarding" className="text-orange-700 underline">
           Onboarding
         </a>
-        <span className="text-gray-400">(Use API or future UI for products: /api/vendors/me/products)</span>
+        <a href="/vendor/products" className="text-orange-700 underline">
+          Products
+        </a>
       </nav>
 
-      {error ? <p className="mt-4 text-sm text-red-800">{error}</p> : null}
+      {error ? (
+        <div className="mt-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+          <p>{error}</p>
+          {needsSignIn ? (
+            <a href="/login?next=/vendor/dashboard" className="mt-2 inline-block font-medium text-orange-800 underline">
+              Sign in
+            </a>
+          ) : null}
+        </div>
+      ) : null}
 
       <section className="mt-8">
         <h2 className="text-lg font-medium text-gray-900">Recent line items</h2>

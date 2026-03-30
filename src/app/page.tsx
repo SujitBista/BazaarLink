@@ -7,8 +7,14 @@ function firstString(v: string | string[] | undefined): string {
   return typeof v === "string" ? v : v[0] ?? "";
 }
 
-export default function HomePage({ searchParams }: { searchParams: Search }) {
-  const q = firstString(searchParams.q) || firstString(searchParams.search);
+export default async function HomePage({
+  searchParams,
+}: {
+  /** Next.js 15+ passes a Promise; awaiting a plain object (Next 14) is still valid. */
+  searchParams: Search | Promise<Search>;
+}) {
+  const sp = await searchParams;
+  const q = firstString(sp.q) || firstString(sp.search);
   return (
     <>
       <HomeContent initialQ={q} />
