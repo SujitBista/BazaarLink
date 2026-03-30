@@ -58,8 +58,12 @@ model User {
   updatedAt     DateTime  @updatedAt @map("updated_at")
 
   vendor    Vendor?
+  approvedVendors Vendor[] @relation("ApprovedVendors")
+  emailVerificationTokens EmailVerificationToken[]
+  passwordResetTokens PasswordResetToken[]
   addresses Address[]
   orders    Order[]
+  cart      Cart?
 }
 
 model Vendor {
@@ -67,15 +71,42 @@ model Vendor {
   userId     String       @unique @map("user_id")
   status     VendorStatus @default(PENDING)
   approvedAt DateTime?    @map("approved_at")
-  approvedBy String?      @map("approved_by")
+  approvedById String?      @map("approved_by")
   createdAt  DateTime     @default(now()) @map("created_at")
   updatedAt  DateTime     @updatedAt @map("updated_at")
 
   user       User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  approvedBy User?           @relation("ApprovedVendors", fields: [approvedById], references: [id], onDelete: SetNull)
   profile    VendorProfile?
   products    Product[]
   orderItems  OrderItem[]
   commissions Commission[]
+}
+
+model EmailVerificationToken {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  tokenHash String   @unique @map("token_hash")
+  expiresAt DateTime @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  tokenHash String   @unique @map("token_hash")
+  expiresAt DateTime @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 model VendorProfile {
@@ -125,6 +156,34 @@ model Category {
   @@index([parentId])
 }
 
+model Cart {
+  id        String   @id @default(cuid())
+  userId    String   @unique @map("user_id")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user  User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items CartItem[]
+
+  @@map("carts")
+}
+
+model CartItem {
+  id               String @id @default(cuid())
+  cartId           String @map("cart_id")
+  productVariantId String @map("product_variant_id")
+  quantity         Int
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  cart           Cart           @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  productVariant ProductVariant @relation(fields: [productVariantId], references: [id], onDelete: Restrict)
+
+  @@unique([cartId, productVariantId])
+  @@index([cartId])
+  @@map("cart_items")
+}
+
 model Product {
   id          String        @id @default(cuid())
   vendorId    String        @map("vendor_id")
@@ -171,6 +230,7 @@ model ProductVariant {
 
   product    Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
   orderItems OrderItem[]
+  cartItems  CartItem[]
 
   // Postgres treats NULL as distinct in unique indexes: multiple rows may share
   // (productId, sku) when sku IS NULL. Enforce non-null SKU or app-level rules as needed.

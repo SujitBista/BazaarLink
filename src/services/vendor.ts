@@ -29,7 +29,6 @@ export function toNonAdminVendorResponse(vendor: VendorWithProfile) {
     userId: vendor.userId,
     status: vendor.status,
     approvedAt: vendor.approvedAt,
-    approvedBy: vendor.approvedBy,
     createdAt: vendor.createdAt,
     updatedAt: vendor.updatedAt,
     profile: vendor.profile
@@ -37,12 +36,18 @@ export function toNonAdminVendorResponse(vendor: VendorWithProfile) {
           id: vendor.profile.id,
           vendorId: vendor.profile.vendorId,
           businessName: vendor.profile.businessName,
-          contactEmail: vendor.profile.contactEmail,
-          contactPhone: vendor.profile.contactPhone,
           createdAt: vendor.profile.createdAt,
           updatedAt: vendor.profile.updatedAt,
         }
       : null,
+  };
+}
+
+/** Vendor snippet for public catalog (no PII or moderation fields). */
+export function toPublicProductVendor(vendor: { id: string; profile: { businessName: string } | null }) {
+  return {
+    id: vendor.id,
+    profile: vendor.profile ? { businessName: vendor.profile.businessName } : null,
   };
 }
 
@@ -100,7 +105,7 @@ export async function submitVendorOnboarding(userId: string, input: RegisterVend
             userId,
             status: VendorStatus.PENDING,
             approvedAt: null,
-            approvedBy: null,
+            approvedById: null,
             profile: {
               create: profileData,
             },
@@ -121,7 +126,7 @@ export async function submitVendorOnboarding(userId: string, input: RegisterVend
         where: { id: existingVendor.id },
         data: {
           approvedAt: null,
-          approvedBy: null,
+          approvedById: null,
           profile: existingVendor.profile
             ? {
                 update: profileData,
@@ -211,7 +216,7 @@ export async function approveVendor(vendorId: string, adminUserId: string) {
       data: {
         status: VendorStatus.APPROVED,
         approvedAt: new Date(),
-        approvedBy: adminUserId,
+        approvedById: adminUserId,
       },
       include: { profile: true, user: { select: { id: true, email: true, role: true } } },
     });

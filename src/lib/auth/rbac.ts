@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db";
-import { getSession } from "@/lib/auth/session";
+import { getResolvedSession } from "@/services/auth";
 import type { SessionUser } from "@/types/api";
 import type { Vendor } from "@prisma/client";
 import { VendorStatus } from "@prisma/client";
@@ -16,14 +16,14 @@ function forbidden(message = "Forbidden"): never {
   throw err;
 }
 
-/** Loads the current session or responds with 401 (for API route handlers). */
+/** Loads the current session from DB (refreshes JWT when role/emailVerified drift). */
 export async function requireAuth(): Promise<SessionUser> {
-  const user = await getSession();
+  const user = await getResolvedSession();
   if (!user) unauthorized();
   return user;
 }
 
-/** Requires `User.role === ADMIN`. */
+/** Requires `User.role === ADMIN` (from DB via resolved session). */
 export async function requireAdmin(): Promise<SessionUser> {
   const user = await requireAuth();
   if (user.role !== "ADMIN") forbidden();

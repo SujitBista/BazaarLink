@@ -34,7 +34,11 @@ export const adminListVendorsQuerySchema = z.object({
 });
 
 export const vendorIdParamSchema = z.object({
-  vendorId: z.string().trim().min(1, "vendorId is required"),
+  vendorId: z.string().cuid("Invalid vendor id"),
+});
+
+export const productIdParamSchema = z.object({
+  productId: z.string().cuid("Invalid product id"),
 });
 
 export type RegisterVendorInput = z.infer<typeof registerVendorSchema>;

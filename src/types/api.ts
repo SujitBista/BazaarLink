@@ -10,4 +10,5 @@ export interface SessionUser {
 export interface ApiError {
   error: string;
   code?: string;
+  details?: unknown;
 }

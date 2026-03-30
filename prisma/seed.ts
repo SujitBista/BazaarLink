@@ -87,7 +87,7 @@ async function main() {
       userId: vendorApprovedUser.id,
       status: VendorStatus.APPROVED,
       approvedAt: new Date("2025-02-10T10:00:00.000Z"),
-      approvedBy: admin.id,
+      approvedById: admin.id,
     },
   });
 

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth/rbac";
 import { getVendorByUserId, toNonAdminVendorResponse } from "@/services/vendor";
+import { fromServiceError } from "@/lib/api/errors";
 
 export async function GET() {
   try {
@@ -11,8 +12,6 @@ export async function GET() {
     }
     return NextResponse.json({ vendor: toNonAdminVendorResponse(vendor) });
   } catch (e) {
-    const err = e as Error & { statusCode?: number };
-    const status = err.statusCode ?? 500;
-    return NextResponse.json({ error: err.message ?? "Failed to get vendor" }, { status });
+    return fromServiceError(e, { error: "Failed to get vendor", code: "GET_VENDOR_FAILED" });
   }
 }
