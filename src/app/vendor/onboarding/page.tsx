@@ -172,6 +172,8 @@ export default function VendorOnboardingPage() {
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [resendState, setResendState] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const [devVerifyUrl, setDevVerifyUrl] = useState<string | null>(null);
+  const [signingOut, setSigningOut] = useState(false);
+  const [signOutError, setSignOutError] = useState<string | null>(null);
   const [urlFlags, setUrlFlags] = useState<{
     emailVerified: boolean;
     verifyError: string | null;
@@ -283,6 +285,20 @@ export default function VendorOnboardingPage() {
     });
     setResendState(res.ok ? "sent" : "error");
   }, [me]);
+
+  const signOut = useCallback(async () => {
+    setSignOutError(null);
+    setSigningOut(true);
+    const res = await fetchApiJson<{ ok: boolean }>("/api/auth/logout", {
+      method: "POST",
+    });
+    setSigningOut(false);
+    if (!res.ok) {
+      setSignOutError(res.error);
+      return;
+    }
+    window.location.assign("/");
+  }, []);
 
   const previewSlug = normalizeSlugInput(storeSlug);
   const storePreviewUrl = previewSlug.length >= 3 && /^[a-z0-9-]+$/.test(previewSlug) ? `yourapp.com/store/${previewSlug}` : null;
@@ -571,19 +587,40 @@ export default function VendorOnboardingPage() {
 
   return (
     <main className="mx-auto max-w-2xl p-8">
-      <h1 className="text-xl font-semibold text-gray-900">Vendor onboarding</h1>
-      <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-gray-600">
-        <span>Signed in as {me.email}</span>
-        {me.emailVerified ? (
-          <span className="inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-900">
-            Email verified
-          </span>
-        ) : (
-          <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-900">
-            Email not verified
-          </span>
-        )}
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-semibold text-gray-900">Vendor onboarding</h1>
+          <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-gray-600">
+            <span>Signed in as {me.email}</span>
+            {me.emailVerified ? (
+              <span className="inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-900">
+                Email verified
+              </span>
+            ) : (
+              <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-900">
+                Email not verified
+              </span>
+            )}
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <a
+            href="/"
+            className="inline-flex items-center rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+          >
+            Home
+          </a>
+          <button
+            type="button"
+            onClick={() => void signOut()}
+            disabled={signingOut}
+            className="inline-flex items-center rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {signingOut ? "Signing out..." : "Sign out"}
+          </button>
+        </div>
       </div>
+      {signOutError ? <p className="mt-2 text-xs text-red-800">{signOutError}</p> : null}
 
       {!me.emailVerified ? (
         <section className="mt-4 rounded border border-amber-200 bg-amber-50 p-3 text-sm text-gray-800">
@@ -1124,9 +1161,6 @@ export default function VendorOnboardingPage() {
         </form>
       )}
 
-      <a href="/" className="mt-8 inline-block text-sm text-blue-700 underline">
-        Home
-      </a>
     </main>
   );
 }
