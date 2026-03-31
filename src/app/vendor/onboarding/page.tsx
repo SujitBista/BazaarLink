@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { fetchApiJson, formatValidationDetails } from "@/lib/client/api-json";
+import { signOutAndRedirect } from "@/lib/client/sign-out";
 
 type MeUser = {
   id: string;
@@ -307,15 +308,12 @@ export default function VendorOnboardingPage() {
   const signOut = useCallback(async () => {
     setSignOutError(null);
     setSigningOut(true);
-    const res = await fetchApiJson<{ ok: boolean }>("/api/auth/logout", {
-      method: "POST",
-    });
-    setSigningOut(false);
+    const res = await signOutAndRedirect("/");
     if (!res.ok) {
-      setSignOutError(res.error);
+      setSigningOut(false);
+      setSignOutError(res.error ?? "Could not sign out");
       return;
     }
-    window.location.assign("/");
   }, []);
 
   const previewSlug = normalizeSlugInput(storeSlug);
