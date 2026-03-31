@@ -30,9 +30,12 @@ export default async function HomePage({
             <li>POST /api/vendors/onboarding – alias for vendor onboarding submission</li>
             <li>GET /api/vendors/me – my vendor profile</li>
             <li>GET/PATCH /api/vendors/[vendorId] – get/update vendor (owner)</li>
-            <li>GET /api/admin/vendors – list vendors (ADMIN)</li>
-            <li>POST /api/admin/vendors/[id]/approve – approve vendor</li>
-            <li>POST /api/admin/vendors/[id]/suspend – suspend vendor</li>
+            <li>GET /api/admin/vendors – list vendors (ADMIN); query: status, q, sort, pending=true</li>
+            <li>GET /api/admin/vendors/[id] – vendor detail for moderation (ADMIN)</li>
+            <li>POST /api/admin/vendors/[id]/approve – approve vendor (optional body: note)</li>
+            <li>POST /api/admin/vendors/[id]/reject – reject (body: note)</li>
+            <li>POST /api/admin/vendors/[id]/request-changes – request changes (body: note)</li>
+            <li>POST /api/admin/vendors/[id]/suspend – suspend (body: rejectionReason)</li>
             <li>GET /api/categories – list categories (public)</li>
             <li>GET /api/categories/[slug] – get category by slug (public)</li>
             <li>GET/POST /api/admin/categories – list/create categories (ADMIN)</li>

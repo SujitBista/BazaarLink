@@ -217,10 +217,10 @@ describe("Phase 1 integration and edge cases", () => {
     expect(approvedAgain.status).toBe(VendorStatus.APPROVED);
     expect(approvedAgain.approvedById).toBe(admin.id);
 
-    const suspended = await suspendVendor(second.id);
+    const suspended = await suspendVendor(second.id, "Policy check", admin.id);
     expect(suspended.status).toBe(VendorStatus.SUSPENDED);
 
-    const suspendedAgain = await suspendVendor(second.id);
+    const suspendedAgain = await suspendVendor(second.id, "Policy check", admin.id);
     expect(suspendedAgain.status).toBe(VendorStatus.SUSPENDED);
 
     const reinstated = await approveVendor(second.id, admin.id);

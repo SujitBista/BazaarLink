@@ -72,15 +72,35 @@ export const adminVendorActionSchema = z.object({
 });
 
 export const adminSuspendVendorSchema = z.object({
-  rejectionReason: z.string().trim().max(1000, "Rejection reason is too long").optional(),
+  rejectionReason: z.string().trim().min(1, "Reason is required").max(2000, "Reason is too long"),
 });
+
+export const adminApproveVendorBodySchema = z.object({
+  note: z.string().trim().max(2000, "Note is too long").optional(),
+});
+
+export const adminModerationNoteBodySchema = z.object({
+  note: z.string().trim().min(1, "Note is required").max(2000, "Note is too long"),
+});
+
+const vendorStatusFilterValues = [
+  "DRAFT",
+  "PENDING",
+  "CHANGES_REQUESTED",
+  "APPROVED",
+  "REJECTED",
+  "SUSPENDED",
+  "ALL",
+] as const;
 
 export const adminListVendorsQuerySchema = z.object({
   pending: z
     .enum(["true", "false"])
     .optional()
     .transform((v) => v === "true"),
-  status: z.enum(["PENDING", "APPROVED", "SUSPENDED"]).optional(),
+  status: z.enum(vendorStatusFilterValues).optional(),
+  q: z.string().trim().max(200).optional().or(z.literal("")),
+  sort: z.enum(["created_desc", "created_asc", "updated_desc"]).optional(),
 });
 
 export const vendorIdParamSchema = z.object({

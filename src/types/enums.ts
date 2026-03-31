@@ -8,8 +8,11 @@ export const UserRole = {
 export type UserRole = (typeof UserRole)[keyof typeof UserRole];
 
 export const VendorStatus = {
+  DRAFT: "DRAFT",
   PENDING: "PENDING",
+  CHANGES_REQUESTED: "CHANGES_REQUESTED",
   APPROVED: "APPROVED",
+  REJECTED: "REJECTED",
   SUSPENDED: "SUSPENDED",
 } as const;
 export type VendorStatus = (typeof VendorStatus)[keyof typeof VendorStatus];
