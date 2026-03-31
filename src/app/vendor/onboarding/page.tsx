@@ -606,6 +606,9 @@ export default function VendorOnboardingPage() {
   const logoPreviewSrc = logoObjectUrl || storeLogoUrl || null;
   const documentPreviewSrc = documentObjectUrl || documentUrl || null;
   const documentIsImage = /\.(png|jpe?g|webp|gif)$/i.test(documentFileName || documentPreviewSrc || "");
+  const isApproved = vendor?.status === "APPROVED";
+  const approvedStoreSlug = normalizeSlugInput(vendor?.profile?.storeProfile?.slug ?? "");
+  const approvedStorePreviewUrl = approvedStoreSlug ? `yourapp.com/store/${approvedStoreSlug}` : null;
 
   return (
     <main className="mx-auto max-w-2xl p-8">
@@ -727,11 +730,45 @@ export default function VendorOnboardingPage() {
         <p className="mt-4 text-gray-700">You have not submitted onboarding yet.</p>
       )}
 
-      {!canEdit ? (
-        <p className="mt-6 text-sm text-gray-600">
-          Updates are currently available only for new or rejected applications. Contact support if you need changes.
-        </p>
-      ) : (
+      {isApproved ? (
+        <section className="mt-6 rounded-lg border border-green-200 bg-green-50 p-5">
+          <h2 className="text-xl font-semibold text-green-900">🎉 Your store has been approved!</h2>
+          <p className="mt-2 text-sm text-green-900">You can now start selling on the platform.</p>
+          {approvedStorePreviewUrl ? (
+            <p className="mt-3 text-sm text-green-900">
+              Store preview: <span className="font-mono font-medium">{approvedStorePreviewUrl}</span>
+            </p>
+          ) : null}
+          <div className="mt-5 flex flex-wrap items-center gap-3">
+            <a
+              href="/vendor/dashboard"
+              className="inline-flex items-center rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-black"
+            >
+              Go to Vendor Dashboard
+            </a>
+            <a
+              href="/vendor/products"
+              className="inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-800 hover:bg-gray-50"
+            >
+              Add your first product
+            </a>
+            <a
+              href="/vendor/dashboard"
+              className="inline-flex items-center rounded-md border border-transparent px-2 py-1 text-sm font-medium text-gray-700 underline hover:text-gray-900"
+            >
+              Edit store profile
+            </a>
+          </div>
+          <div className="mt-5 rounded-md border border-green-200 bg-white p-4">
+            <h3 className="text-sm font-semibold text-gray-900">Next steps</h3>
+            <ul className="mt-2 list-inside list-disc space-y-1 text-sm text-gray-700">
+              <li>Add products</li>
+              <li>Set pricing</li>
+              <li>Start receiving orders</li>
+            </ul>
+          </div>
+        </section>
+      ) : !canEdit ? null : (
         <form onSubmit={(e) => void onSubmit(e)} className="mt-6 space-y-4">
           <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
