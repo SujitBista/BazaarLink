@@ -59,6 +59,14 @@ function slugify(name: string): string {
     .replace(/^-|-$/g, "");
 }
 
+function formatProductPrice(value: unknown): string {
+  const n = typeof value === "string" ? Number.parseFloat(value) : Number(value);
+  if (!Number.isFinite(n)) return "—";
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(n);
+}
+
+type StatusFilter = "all" | "DRAFT" | "ACTIVE";
+
 export default function VendorProductsPage() {
   const [me, setMe] = useState<MeUser | null | undefined>(undefined);
   /** `undefined` = not loaded yet (vendor role). */
@@ -69,8 +77,11 @@ export default function VendorProductsPage() {
   const [formError, setFormError] = useState<string | null>(null);
   const [formDetails, setFormDetails] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
-  const [publishingId, setPublishingId] = useState<string | null>(null);
+  const [statusMutationId, setStatusMutationId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [showProductForm, setShowProductForm] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
 
   const [name, setName] = useState("");
@@ -139,6 +150,17 @@ export default function VendorProductsPage() {
 
   const nextSlug = useMemo(() => slugify(name), [name]);
   const editingProduct = useMemo(() => products.find((p) => p.id === editingId) ?? null, [editingId, products]);
+
+  const categoryLabelById = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const c of categories) m.set(c.id, c.label);
+    return m;
+  }, [categories]);
+
+  const filteredProducts = useMemo(() => {
+    if (statusFilter === "all") return products;
+    return products.filter((p) => p.status === statusFilter);
+  }, [products, statusFilter]);
 
   useEffect(() => {
     if (!slugTouched && name) {
@@ -241,23 +263,57 @@ export default function VendorProductsPage() {
       return;
     }
     resetForm();
+    setShowProductForm(false);
     await load();
   }
 
   async function onPublish(productId: string) {
     setFormError(null);
     setFormDetails([]);
-    setPublishingId(productId);
+    setStatusMutationId(productId);
     const res = await fetchApiJson<{ product: unknown }>(`/api/vendors/me/products/${productId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status: "ACTIVE" }),
     });
-    setPublishingId(null);
+    setStatusMutationId(null);
     if (!res.ok) {
       setFormError(res.error);
       return;
     }
+    await load();
+  }
+
+  async function onUnpublish(productId: string) {
+    setFormError(null);
+    setFormDetails([]);
+    setStatusMutationId(productId);
+    const res = await fetchApiJson<{ product: unknown }>(`/api/vendors/me/products/${productId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "DRAFT" }),
+    });
+    setStatusMutationId(null);
+    if (!res.ok) {
+      setFormError(res.error);
+      return;
+    }
+    await load();
+  }
+
+  async function onDeleteProduct(productId: string) {
+    const ok = window.confirm("Delete this product? This cannot be undone.");
+    if (!ok) return;
+    setFormError(null);
+    setFormDetails([]);
+    setDeletingId(productId);
+    const res = await fetchApiJson<{ ok: boolean }>(`/api/vendors/me/products/${productId}`, { method: "DELETE" });
+    setDeletingId(null);
+    if (!res.ok) {
+      setFormError(res.error);
+      return;
+    }
+    if (editingId === productId) resetForm();
     await load();
   }
 
@@ -275,6 +331,7 @@ export default function VendorProductsPage() {
     setImagePreviewUrl(product.images?.[0]?.url ?? null);
     setImageFile(null);
     setCategoryId(product.category.id);
+    setShowProductForm(true);
   }
 
   useEffect(() => {
@@ -395,226 +452,381 @@ export default function VendorProductsPage() {
       {loadError ? <p className="mt-4 text-sm text-red-800">{loadError}</p> : null}
 
       <section className="mt-10">
-        <h2 className="text-lg font-medium text-gray-900">Your products</h2>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <h2 className="text-lg font-medium text-gray-900">Your products</h2>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              disabled={!approved || !canAdd}
+              onClick={() => {
+                setShowProductForm((v) => !v);
+                if (!showProductForm && !editingId) resetForm();
+              }}
+              className="rounded-md bg-orange-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-orange-700 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {showProductForm ? "Hide form" : "Add Product"}
+            </button>
+            {products.length > 0 ? (
+              <div className="flex flex-wrap items-center gap-2 text-sm">
+                <span className="text-gray-600">Show:</span>
+                <div className="inline-flex rounded-md border border-gray-200 bg-white p-0.5 shadow-sm">
+                  {(
+                    [
+                      { value: "all" as const, label: "All" },
+                      { value: "DRAFT" as const, label: "Draft" },
+                      { value: "ACTIVE" as const, label: "Active" },
+                    ] as const
+                  ).map(({ value, label }) => (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => setStatusFilter(value)}
+                      className={
+                        statusFilter === value
+                          ? "rounded bg-orange-600 px-2.5 py-1 text-xs font-medium text-white"
+                          : "rounded px-2.5 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                      }
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+          </div>
+        </div>
+
+        {showProductForm ? (
+          <div className="fixed inset-0 z-40 flex items-start justify-center p-4 sm:p-6">
+            <button
+              type="button"
+              aria-label="Close product form"
+              onClick={() => setShowProductForm(false)}
+              className="absolute inset-0 bg-black/35 backdrop-blur-[1px]"
+            />
+            <section
+              id="product-form"
+              className="relative z-10 max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-xl border border-white/40 bg-white/90 p-5 shadow-2xl"
+            >
+              <div className="flex items-center justify-between gap-3">
+                <h3 className="text-base font-semibold text-gray-900">{editingId ? "Edit product" : "Add a product"}</h3>
+                <button
+                  type="button"
+                  onClick={() => setShowProductForm(false)}
+                  className="rounded border border-gray-300 px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                >
+                  Close
+                </button>
+              </div>
+              {!approved ? (
+                <p className="mt-2 text-sm text-gray-600">
+                  Available only when your vendor status is <strong>APPROVED</strong>.
+                </p>
+              ) : !canAdd ? (
+                <p className="mt-2 text-sm text-gray-600">Loading categories…</p>
+              ) : (
+                <form onSubmit={(e) => void onCreate(e)} className="mt-4 space-y-4">
+                  <div>
+                    <label htmlFor="categoryId" className="block text-sm font-medium text-gray-700">
+                      Category <span className="text-red-600">*</span>
+                    </label>
+                    <select
+                      id="categoryId"
+                      required
+                      value={categoryId}
+                      onChange={(e) => setCategoryId(e.target.value)}
+                      className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                    >
+                      <option value="">Select category</option>
+                      {categories.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label htmlFor="pname" className="block text-sm font-medium text-gray-700">
+                      Product name <span className="text-red-600">*</span>
+                    </label>
+                    <input
+                      id="pname"
+                      required
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="pslug" className="block text-sm font-medium text-gray-700">
+                      URL slug <span className="text-red-600">*</span>
+                    </label>
+                    <input
+                      id="pslug"
+                      value={slug}
+                      onChange={(e) => {
+                        setSlugTouched(true);
+                        setSlug(e.target.value);
+                      }}
+                      placeholder={nextSlug}
+                      className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm font-mono text-xs"
+                    />
+                    <p className="mt-1 text-xs text-gray-500">Auto-generated from product name. You can edit it.</p>
+                  </div>
+                  <div>
+                    <label htmlFor="pdesc" className="block text-sm font-medium text-gray-700">
+                      Description (optional)
+                    </label>
+                    <textarea
+                      id="pdesc"
+                      rows={3}
+                      value={description}
+                      onChange={(e) => setDescription(e.target.value)}
+                      className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label htmlFor="price" className="block text-sm font-medium text-gray-700">
+                        Price <span className="text-red-600">*</span>
+                      </label>
+                      <input
+                        id="price"
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        required
+                        value={price}
+                        onChange={(e) => setPrice(e.target.value)}
+                        className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="stock" className="block text-sm font-medium text-gray-700">
+                        Stock <span className="text-red-600">*</span>
+                      </label>
+                      <input
+                        id="stock"
+                        type="number"
+                        min="0"
+                        required
+                        value={stock}
+                        onChange={(e) => setStock(e.target.value)}
+                        className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label htmlFor="sku" className="block text-sm font-medium text-gray-700">
+                      SKU (optional)
+                    </label>
+                    <input
+                      id="sku"
+                      value={sku}
+                      onChange={(e) => setSku(e.target.value)}
+                      className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="pimage" className="block text-sm font-medium text-gray-700">
+                      Product image
+                    </label>
+                    <input
+                      id="pimage"
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0] ?? null;
+                        setImageFile(file);
+                        setUploadedImageUrl(null);
+                        if (file) {
+                          setImagePreviewUrl(URL.createObjectURL(file));
+                        } else {
+                          setImagePreviewUrl(editingProduct?.images?.[0]?.url ?? null);
+                        }
+                      }}
+                      className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                    />
+                    {imagePreviewUrl ? (
+                      <img
+                        src={imagePreviewUrl}
+                        alt="Product preview"
+                        className="mt-3 h-24 w-24 rounded-md border border-gray-200 object-cover"
+                      />
+                    ) : null}
+                  </div>
+
+                  {formError ? (
+                    <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+                      <p>{formError}</p>
+                      {formDetails.length > 0 ? (
+                        <ul className="mt-2 list-inside list-disc text-xs">
+                          {formDetails.map((d) => (
+                            <li key={d}>{d}</li>
+                          ))}
+                        </ul>
+                      ) : null}
+                    </div>
+                  ) : null}
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="submit"
+                      disabled={submitting || uploadingImage || !categoryId}
+                      className="rounded-md bg-orange-600 px-4 py-2 text-sm font-medium text-white shadow hover:bg-orange-700 disabled:opacity-50"
+                    >
+                      {submitting ? "Saving..." : editingId ? "Save changes" : "Create draft product"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        resetForm();
+                        setShowProductForm(false);
+                      }}
+                      className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </form>
+              )}
+            </section>
+          </div>
+        ) : null}
+
         {products.length === 0 ? (
           <div className="mt-3 rounded-lg border border-dashed border-gray-300 bg-gray-50 px-4 py-6 text-sm">
-            <p className="text-gray-700">You don’t have any products yet</p>
+            <p className="text-gray-700">You don’t have any products yet.</p>
             <button
               type="button"
               onClick={() => {
-                const form = document.getElementById("product-form");
-                form?.scrollIntoView({ behavior: "smooth", block: "start" });
+                setShowProductForm(true);
               }}
               className="mt-3 rounded-md bg-orange-600 px-3 py-2 text-xs font-medium text-white hover:bg-orange-700"
             >
               Add your first product
             </button>
           </div>
+        ) : filteredProducts.length === 0 ? (
+          <div className="mt-3 rounded-lg border border-dashed border-gray-300 bg-gray-50 px-4 py-6 text-sm text-gray-700">
+            No products match this filter.
+          </div>
         ) : (
-          <ul className="mt-3 space-y-2">
-            {products.map((p) => (
-              <li key={p.id} className="rounded border border-gray-200 px-3 py-3 text-sm">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div className="space-y-1">
-                    <p className="font-medium text-gray-900">{p.name}</p>
-                    <p className="text-xs text-gray-600">Category: {p.category.name}</p>
-                    <p className="text-xs text-gray-600">Price: ${String(p.variants[0]?.price ?? "-")}</p>
-                    <p className="text-xs text-gray-600">Stock: {p.variants[0]?.stock ?? 0}</p>
-                    <p className="text-xs text-gray-600">
-                      Status:{" "}
-                      <span className={p.status === "ACTIVE" ? "font-medium text-green-700" : "font-medium text-amber-700"}>
-                        {p.status === "ACTIVE" ? "Active" : "Draft"}
-                      </span>
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => onEdit(p)}
-                      className="rounded border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
-                    >
-                      Edit
-                    </button>
-                    <button
-                      type="button"
-                      disabled={p.status === "ACTIVE" || publishingId === p.id}
-                      onClick={() => void onPublish(p.id)}
-                      className="rounded bg-orange-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-orange-700 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      {publishingId === p.id ? "Publishing..." : p.status === "ACTIVE" ? "Published" : "Publish"}
-                    </button>
-                  </div>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-
-      <section id="product-form" className="mt-10 border-t border-gray-200 pt-10">
-        <h2 className="text-lg font-medium text-gray-900">{editingId ? "Edit product" : "Add a product"}</h2>
-        {!approved ? (
-          <p className="mt-2 text-sm text-gray-600">Available only when your vendor status is <strong>APPROVED</strong>.</p>
-        ) : !canAdd ? (
-          <p className="mt-2 text-sm text-gray-600">Loading categories…</p>
-        ) : (
-          <form onSubmit={(e) => void onCreate(e)} className="mt-4 max-w-lg space-y-4">
-            <div>
-              <label htmlFor="categoryId" className="block text-sm font-medium text-gray-700">
-                Category <span className="text-red-600">*</span>
-              </label>
-              <select
-                id="categoryId"
-                required
-                value={categoryId}
-                onChange={(e) => setCategoryId(e.target.value)}
-                className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
-              >
-                <option value="">Select category</option>
-                {categories.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label htmlFor="pname" className="block text-sm font-medium text-gray-700">
-                Product name <span className="text-red-600">*</span>
-              </label>
-              <input
-                id="pname"
-                required
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
-              />
-            </div>
-            <div>
-              <label htmlFor="pslug" className="block text-sm font-medium text-gray-700">
-                URL slug <span className="text-red-600">*</span>
-              </label>
-              <input
-                id="pslug"
-                value={slug}
-                onChange={(e) => {
-                  setSlugTouched(true);
-                  setSlug(e.target.value);
-                }}
-                placeholder={nextSlug}
-                className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm font-mono text-xs"
-              />
-              <p className="mt-1 text-xs text-gray-500">Auto-generated from product name. You can edit it.</p>
-            </div>
-            <div>
-              <label htmlFor="pdesc" className="block text-sm font-medium text-gray-700">
-                Description (optional)
-              </label>
-              <textarea
-                id="pdesc"
-                rows={3}
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label htmlFor="price" className="block text-sm font-medium text-gray-700">
-                  Price <span className="text-red-600">*</span>
-                </label>
-                <input
-                  id="price"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  required
-                  value={price}
-                  onChange={(e) => setPrice(e.target.value)}
-                  className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
-                />
-              </div>
-              <div>
-                <label htmlFor="stock" className="block text-sm font-medium text-gray-700">
-                  Stock <span className="text-red-600">*</span>
-                </label>
-                <input
-                  id="stock"
-                  type="number"
-                  min="0"
-                  required
-                  value={stock}
-                  onChange={(e) => setStock(e.target.value)}
-                  className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
-                />
-              </div>
-            </div>
-            <div>
-              <label htmlFor="sku" className="block text-sm font-medium text-gray-700">
-                SKU (optional)
-              </label>
-              <input
-                id="sku"
-                value={sku}
-                onChange={(e) => setSku(e.target.value)}
-                className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
-              />
-            </div>
-            <div>
-              <label htmlFor="pimage" className="block text-sm font-medium text-gray-700">
-                Product image
-              </label>
-              <input
-                id="pimage"
-                type="file"
-                accept="image/*"
-                onChange={(e) => {
-                  const file = e.target.files?.[0] ?? null;
-                  setImageFile(file);
-                  setUploadedImageUrl(null);
-                  if (file) {
-                    setImagePreviewUrl(URL.createObjectURL(file));
-                  } else {
-                    setImagePreviewUrl(editingProduct?.images?.[0]?.url ?? null);
-                  }
-                }}
-                className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
-              />
-              {imagePreviewUrl ? (
-                <img src={imagePreviewUrl} alt="Product preview" className="mt-3 h-24 w-24 rounded-md border border-gray-200 object-cover" />
-              ) : null}
-            </div>
-
-            {formError ? (
-              <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
-                <p>{formError}</p>
-                {formDetails.length > 0 ? (
-                  <ul className="mt-2 list-inside list-disc text-xs">
-                    {formDetails.map((d) => (
-                      <li key={d}>{d}</li>
-                    ))}
-                  </ul>
-                ) : null}
-              </div>
-            ) : null}
-
-            <button
-              type="submit"
-              disabled={submitting || uploadingImage || !categoryId}
-              className="rounded-md bg-orange-600 px-4 py-2 text-sm font-medium text-white shadow hover:bg-orange-700 disabled:opacity-50"
-            >
-              {submitting ? "Saving..." : editingId ? "Save changes" : "Create draft product"}
-            </button>
-            {editingId ? (
-              <button
-                type="button"
-                onClick={resetForm}
-                className="ml-2 rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-              >
-                Cancel
-              </button>
-            ) : null}
-          </form>
+          <div className="mt-3 -mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
+            <table className="w-full min-w-[44rem] border-collapse text-left text-sm">
+              <thead>
+                <tr className="border-b border-gray-200 bg-gray-50 text-xs font-semibold uppercase tracking-wide text-gray-600">
+                  <th className="py-2.5 pl-3 pr-2">Product</th>
+                  <th className="px-2 py-2.5">Category</th>
+                  <th className="px-2 py-2.5">Price</th>
+                  <th className="px-2 py-2.5">Stock</th>
+                  <th className="px-2 py-2.5">Status</th>
+                  <th className="py-2.5 pl-2 pr-3 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {filteredProducts.map((p) => {
+                  const variant = p.variants[0];
+                  const thumb = p.images?.[0]?.url;
+                  const categoryPath = categoryLabelById.get(p.category.id) ?? p.category.name;
+                  const skuLine = variant?.sku?.trim();
+                  const busy = statusMutationId === p.id || deletingId === p.id;
+                  return (
+                    <tr key={p.id} className="bg-white hover:bg-gray-50/80">
+                      <td className="py-2.5 pl-3 pr-2 align-middle">
+                        <div className="flex min-w-0 items-center gap-3">
+                          <div className="relative h-10 w-10 shrink-0 overflow-hidden rounded border border-gray-200 bg-gray-100">
+                            {thumb ? (
+                              // eslint-disable-next-line @next/next/no-img-element -- remote catalog URLs
+                              <img src={thumb} alt="" className="h-full w-full object-cover" />
+                            ) : (
+                              <div className="flex h-full items-center justify-center text-[10px] text-gray-400" aria-hidden>
+                                —
+                              </div>
+                            )}
+                          </div>
+                          <div className="min-w-0">
+                            <p className="font-semibold text-gray-900">{p.name}</p>
+                            <p className="truncate font-mono text-[11px] text-gray-500" title={p.slug}>
+                              {p.slug}
+                              {skuLine ? ` · ${skuLine}` : ""}
+                            </p>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="max-w-[12rem] px-2 py-2.5 align-middle text-gray-700">
+                        <span className="line-clamp-2" title={categoryPath}>
+                          {categoryPath}
+                        </span>
+                      </td>
+                      <td className="whitespace-nowrap px-2 py-2.5 align-middle tabular-nums text-gray-900">
+                        {formatProductPrice(variant?.price)}
+                      </td>
+                      <td className="whitespace-nowrap px-2 py-2.5 align-middle tabular-nums text-gray-900">
+                        {variant?.stock ?? 0}
+                      </td>
+                      <td className="px-2 py-2.5 align-middle">
+                        {p.status === "ACTIVE" ? (
+                          <span className="inline-flex rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800">
+                            Active
+                          </span>
+                        ) : (
+                          <span className="inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-900">
+                            Draft
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-2.5 pl-2 pr-3 align-middle text-right">
+                        <div className="flex flex-wrap items-center justify-end gap-x-1 gap-y-1">
+                          <a
+                            href={`/shop/product/${p.id}`}
+                            className="rounded px-1.5 py-0.5 text-xs font-medium text-orange-700 underline-offset-2 hover:underline"
+                          >
+                            View
+                          </a>
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => onEdit(p)}
+                            className="rounded px-1.5 py-0.5 text-xs font-medium text-gray-700 hover:bg-gray-100 disabled:opacity-50"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => void onDeleteProduct(p.id)}
+                            className="rounded px-1.5 py-0.5 text-xs font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
+                          >
+                            {deletingId === p.id ? "…" : "Delete"}
+                          </button>
+                          {p.status === "DRAFT" ? (
+                            <button
+                              type="button"
+                              disabled={busy}
+                              onClick={() => void onPublish(p.id)}
+                              className="rounded bg-orange-600 px-2 py-0.5 text-xs font-medium text-white hover:bg-orange-700 disabled:opacity-50"
+                            >
+                              {statusMutationId === p.id ? "…" : "Publish"}
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              disabled={busy}
+                              onClick={() => void onUnpublish(p.id)}
+                              className="rounded border border-gray-300 bg-white px-2 py-0.5 text-xs font-medium text-gray-800 hover:bg-gray-50 disabled:opacity-50"
+                            >
+                              {statusMutationId === p.id ? "…" : "Unpublish"}
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         )}
       </section>
     </main>
