@@ -31,9 +31,10 @@ type ProductRow = {
   id: string;
   name: string;
   slug: string;
-  status: string;
-  category: { name: string };
-  variants: { price: unknown }[];
+  status: "DRAFT" | "ACTIVE";
+  category: { id: string; name: string };
+  images?: { id: string; url: string; sortOrder: number }[];
+  variants: { id: string; price: unknown; stock: number; sku: string | null }[];
 };
 
 type ProductsResponse = { products: ProductRow[] };
@@ -68,6 +69,9 @@ export default function VendorProductsPage() {
   const [formError, setFormError] = useState<string | null>(null);
   const [formDetails, setFormDetails] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
+  const [publishingId, setPublishingId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [uploadingImage, setUploadingImage] = useState(false);
 
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
@@ -77,6 +81,9 @@ export default function VendorProductsPage() {
   const [price, setPrice] = useState("");
   const [stock, setStock] = useState("0");
   const [sku, setSku] = useState("");
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
+  const [uploadedImageUrl, setUploadedImageUrl] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoadError(null);
@@ -131,6 +138,7 @@ export default function VendorProductsPage() {
   const canAdd = approved && categories.length > 0;
 
   const nextSlug = useMemo(() => slugify(name), [name]);
+  const editingProduct = useMemo(() => products.find((p) => p.id === editingId) ?? null, [editingId, products]);
 
   useEffect(() => {
     if (!slugTouched && name) {
@@ -138,12 +146,58 @@ export default function VendorProductsPage() {
     }
   }, [name, nextSlug, slugTouched]);
 
+  async function uploadSelectedImage() {
+    if (!imageFile) return null;
+    setUploadingImage(true);
+    const form = new FormData();
+    form.append("file", imageFile);
+    form.append("kind", "logo");
+    const res = await fetchApiJson<{ url: string }>("/api/uploads/vendor", {
+      method: "POST",
+      body: form,
+    });
+    setUploadingImage(false);
+    if (!res.ok) {
+      setFormError(res.error);
+      return null;
+    }
+    setUploadedImageUrl(res.data.url);
+    return res.data.url;
+  }
+
+  function resetForm() {
+    setName("");
+    setSlug("");
+    setSlugTouched(false);
+    setDescription("");
+    setPrice("");
+    setStock("0");
+    setSku("");
+    setImageFile(null);
+    setImagePreviewUrl(null);
+    setUploadedImageUrl(null);
+    setEditingId(null);
+  }
+
   async function onCreate(e: React.FormEvent) {
     e.preventDefault();
     setFormError(null);
     setFormDetails([]);
+    const normalizedSlug = (slug.trim() || nextSlug).toLowerCase();
     const priceNum = Number(price);
     const stockNum = Number.parseInt(stock, 10);
+    if (!name.trim()) {
+      setFormError("Product name is required.");
+      return;
+    }
+    if (!categoryId) {
+      setFormError("Category is required.");
+      return;
+    }
+    if (!normalizedSlug || !/^[a-z0-9-]+$/.test(normalizedSlug)) {
+      setFormError("Slug must contain only lowercase letters, numbers, and hyphens.");
+      return;
+    }
     if (!Number.isFinite(priceNum) || priceNum <= 0) {
       setFormError("Enter a valid price.");
       return;
@@ -152,34 +206,75 @@ export default function VendorProductsPage() {
       setFormError("Enter a valid stock quantity.");
       return;
     }
+
+    let imageUrl = uploadedImageUrl;
+    if (imageFile && !imageUrl) {
+      imageUrl = await uploadSelectedImage();
+      if (!imageUrl) return;
+    }
+
     setSubmitting(true);
     const body = {
       categoryId,
       name: name.trim(),
-      slug: slug.trim() || nextSlug,
+      slug: normalizedSlug,
       description: description.trim() || undefined,
-      status: "DRAFT" as const,
+      status: editingId ? (editingProduct?.status ?? "DRAFT") : ("DRAFT" as const),
+      images: imageUrl ? [{ url: imageUrl, sortOrder: 0 }] : undefined,
       variants: [{ price: priceNum, stock: stockNum, sku: sku.trim() || undefined }],
     };
-    const res = await fetchApiJson<{ product: unknown }>("/api/vendors/me/products", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
+    const res = editingId
+      ? await fetchApiJson<{ product: unknown }>(`/api/vendors/me/products/${editingId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        })
+      : await fetchApiJson<{ product: unknown }>("/api/vendors/me/products", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
     setSubmitting(false);
     if (!res.ok) {
       setFormError(res.error);
       if (res.details) setFormDetails(formatValidationDetails(res.details));
       return;
     }
-    setName("");
-    setSlug("");
-    setSlugTouched(false);
-    setDescription("");
-    setPrice("");
-    setStock("0");
-    setSku("");
+    resetForm();
     await load();
+  }
+
+  async function onPublish(productId: string) {
+    setFormError(null);
+    setFormDetails([]);
+    setPublishingId(productId);
+    const res = await fetchApiJson<{ product: unknown }>(`/api/vendors/me/products/${productId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "ACTIVE" }),
+    });
+    setPublishingId(null);
+    if (!res.ok) {
+      setFormError(res.error);
+      return;
+    }
+    await load();
+  }
+
+  function onEdit(product: ProductRow) {
+    const firstVariant = product.variants[0];
+    setEditingId(product.id);
+    setName(product.name);
+    setSlug(product.slug);
+    setSlugTouched(true);
+    setDescription("");
+    setPrice(String(firstVariant?.price ?? ""));
+    setStock(String(firstVariant?.stock ?? 0));
+    setSku(firstVariant?.sku ?? "");
+    setUploadedImageUrl(product.images?.[0]?.url ?? null);
+    setImagePreviewUrl(product.images?.[0]?.url ?? null);
+    setImageFile(null);
+    setCategoryId(product.category.id);
   }
 
   useEffect(() => {
@@ -266,6 +361,21 @@ export default function VendorProductsPage() {
         {vendor.profile?.businessName ?? "Your store"} · signed in as {me.email}
       </p>
 
+      <nav className="mt-5 flex flex-wrap gap-4 text-sm">
+        <a href="/vendor/dashboard" className="text-gray-700 underline">
+          Dashboard
+        </a>
+        <a href="/vendor/products" className="text-orange-700 underline">
+          Products
+        </a>
+        <a href="/vendor/orders" className="text-gray-700 underline">
+          Orders
+        </a>
+        <a href="/vendor/settings" className="text-gray-700 underline">
+          Settings
+        </a>
+      </nav>
+
       <div className="mt-4 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm">
         <span className="font-medium text-gray-800">Account status:</span>{" "}
         <span className="text-gray-700">{vendor.status}</span>
@@ -278,7 +388,7 @@ export default function VendorProductsPage() {
           <p className="mt-2 text-gray-600">Your selling access is suspended. Contact support if you believe this is a mistake.</p>
         ) : null}
         {vendor.status === "APPROVED" ? (
-          <p className="mt-2 text-gray-600">You can add products below. New listings start as drafts until you activate them (via API or future tools).</p>
+          <p className="mt-2 text-gray-600">Draft products are not visible until published.</p>
         ) : null}
       </div>
 
@@ -287,22 +397,62 @@ export default function VendorProductsPage() {
       <section className="mt-10">
         <h2 className="text-lg font-medium text-gray-900">Your products</h2>
         {products.length === 0 ? (
-          <p className="mt-2 text-sm text-gray-500">No products yet.</p>
+          <div className="mt-3 rounded-lg border border-dashed border-gray-300 bg-gray-50 px-4 py-6 text-sm">
+            <p className="text-gray-700">You don’t have any products yet</p>
+            <button
+              type="button"
+              onClick={() => {
+                const form = document.getElementById("product-form");
+                form?.scrollIntoView({ behavior: "smooth", block: "start" });
+              }}
+              className="mt-3 rounded-md bg-orange-600 px-3 py-2 text-xs font-medium text-white hover:bg-orange-700"
+            >
+              Add your first product
+            </button>
+          </div>
         ) : (
           <ul className="mt-3 space-y-2">
             {products.map((p) => (
-              <li key={p.id} className="rounded border border-gray-200 px-3 py-2 text-sm">
-                <span className="font-medium">{p.name}</span>
-                <span className="text-gray-500"> · {p.category.name}</span>
-                <span className="text-gray-400"> · {p.status}</span>
+              <li key={p.id} className="rounded border border-gray-200 px-3 py-3 text-sm">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="space-y-1">
+                    <p className="font-medium text-gray-900">{p.name}</p>
+                    <p className="text-xs text-gray-600">Category: {p.category.name}</p>
+                    <p className="text-xs text-gray-600">Price: ${String(p.variants[0]?.price ?? "-")}</p>
+                    <p className="text-xs text-gray-600">Stock: {p.variants[0]?.stock ?? 0}</p>
+                    <p className="text-xs text-gray-600">
+                      Status:{" "}
+                      <span className={p.status === "ACTIVE" ? "font-medium text-green-700" : "font-medium text-amber-700"}>
+                        {p.status === "ACTIVE" ? "Active" : "Draft"}
+                      </span>
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => onEdit(p)}
+                      className="rounded border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      disabled={p.status === "ACTIVE" || publishingId === p.id}
+                      onClick={() => void onPublish(p.id)}
+                      className="rounded bg-orange-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-orange-700 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {publishingId === p.id ? "Publishing..." : p.status === "ACTIVE" ? "Published" : "Publish"}
+                    </button>
+                  </div>
+                </div>
               </li>
             ))}
           </ul>
         )}
       </section>
 
-      <section className="mt-10 border-t border-gray-200 pt-10">
-        <h2 className="text-lg font-medium text-gray-900">Add a product</h2>
+      <section id="product-form" className="mt-10 border-t border-gray-200 pt-10">
+        <h2 className="text-lg font-medium text-gray-900">{editingId ? "Edit product" : "Add a product"}</h2>
         {!approved ? (
           <p className="mt-2 text-sm text-gray-600">Available only when your vendor status is <strong>APPROVED</strong>.</p>
         ) : !canAdd ? (
@@ -311,7 +461,7 @@ export default function VendorProductsPage() {
           <form onSubmit={(e) => void onCreate(e)} className="mt-4 max-w-lg space-y-4">
             <div>
               <label htmlFor="categoryId" className="block text-sm font-medium text-gray-700">
-                Category
+                Category <span className="text-red-600">*</span>
               </label>
               <select
                 id="categoryId"
@@ -330,7 +480,7 @@ export default function VendorProductsPage() {
             </div>
             <div>
               <label htmlFor="pname" className="block text-sm font-medium text-gray-700">
-                Product name
+                Product name <span className="text-red-600">*</span>
               </label>
               <input
                 id="pname"
@@ -342,7 +492,7 @@ export default function VendorProductsPage() {
             </div>
             <div>
               <label htmlFor="pslug" className="block text-sm font-medium text-gray-700">
-                URL slug
+                URL slug <span className="text-red-600">*</span>
               </label>
               <input
                 id="pslug"
@@ -354,6 +504,7 @@ export default function VendorProductsPage() {
                 placeholder={nextSlug}
                 className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm font-mono text-xs"
               />
+              <p className="mt-1 text-xs text-gray-500">Auto-generated from product name. You can edit it.</p>
             </div>
             <div>
               <label htmlFor="pdesc" className="block text-sm font-medium text-gray-700">
@@ -370,7 +521,7 @@ export default function VendorProductsPage() {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label htmlFor="price" className="block text-sm font-medium text-gray-700">
-                  Price
+                  Price <span className="text-red-600">*</span>
                 </label>
                 <input
                   id="price"
@@ -385,7 +536,7 @@ export default function VendorProductsPage() {
               </div>
               <div>
                 <label htmlFor="stock" className="block text-sm font-medium text-gray-700">
-                  Stock
+                  Stock <span className="text-red-600">*</span>
                 </label>
                 <input
                   id="stock"
@@ -409,6 +560,30 @@ export default function VendorProductsPage() {
                 className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
               />
             </div>
+            <div>
+              <label htmlFor="pimage" className="block text-sm font-medium text-gray-700">
+                Product image
+              </label>
+              <input
+                id="pimage"
+                type="file"
+                accept="image/*"
+                onChange={(e) => {
+                  const file = e.target.files?.[0] ?? null;
+                  setImageFile(file);
+                  setUploadedImageUrl(null);
+                  if (file) {
+                    setImagePreviewUrl(URL.createObjectURL(file));
+                  } else {
+                    setImagePreviewUrl(editingProduct?.images?.[0]?.url ?? null);
+                  }
+                }}
+                className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+              />
+              {imagePreviewUrl ? (
+                <img src={imagePreviewUrl} alt="Product preview" className="mt-3 h-24 w-24 rounded-md border border-gray-200 object-cover" />
+              ) : null}
+            </div>
 
             {formError ? (
               <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
@@ -425,23 +600,23 @@ export default function VendorProductsPage() {
 
             <button
               type="submit"
-              disabled={submitting || !categoryId}
+              disabled={submitting || uploadingImage || !categoryId}
               className="rounded-md bg-orange-600 px-4 py-2 text-sm font-medium text-white shadow hover:bg-orange-700 disabled:opacity-50"
             >
-              {submitting ? "Creating…" : "Create draft product"}
+              {submitting ? "Saving..." : editingId ? "Save changes" : "Create draft product"}
             </button>
+            {editingId ? (
+              <button
+                type="button"
+                onClick={resetForm}
+                className="ml-2 rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+            ) : null}
           </form>
         )}
       </section>
-
-      <nav className="mt-12 flex flex-wrap gap-4 border-t border-gray-100 pt-8 text-sm">
-        <a href="/vendor/dashboard" className="text-orange-700 underline">
-          Dashboard
-        </a>
-        <a href="/" className="text-gray-600 underline">
-          Home
-        </a>
-      </nav>
     </main>
   );
 }
