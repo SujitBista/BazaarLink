@@ -20,9 +20,19 @@ enum UserRole {
 }
 
 enum VendorStatus {
+  DRAFT
   PENDING
+  CHANGES_REQUESTED
   APPROVED
+  REJECTED
   SUSPENDED
+}
+
+enum VendorModerationAction {
+  APPROVE
+  REQUEST_CHANGES
+  REJECT
+  SUSPEND
 }
 
 enum BusinessType {
@@ -64,6 +74,7 @@ model User {
 
   vendor    Vendor?
   approvedVendors Vendor[] @relation("ApprovedVendors")
+  vendorModerationLogs VendorModerationLog[] @relation("VendorModerationLogs")
   emailVerificationTokens EmailVerificationToken[]
   passwordResetTokens PasswordResetToken[]
   addresses Address[]
@@ -85,9 +96,25 @@ model Vendor {
   user       User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   approvedBy User?           @relation("ApprovedVendors", fields: [approvedById], references: [id], onDelete: SetNull)
   profile    VendorProfile?
+  moderationLogs VendorModerationLog[]
   products    Product[]
   orderItems  OrderItem[]
   commissions Commission[]
+}
+
+model VendorModerationLog {
+  id          String               @id @default(cuid())
+  vendorId    String               @map("vendor_id")
+  action      VendorModerationAction
+  note        String?
+  adminUserId String?              @map("admin_user_id")
+  createdAt   DateTime             @default(now()) @map("created_at")
+
+  vendor Vendor @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  admin  User?  @relation("VendorModerationLogs", fields: [adminUserId], references: [id], onDelete: SetNull)
+
+  @@index([vendorId])
+  @@map("vendor_moderation_logs")
 }
 
 model EmailVerificationToken {

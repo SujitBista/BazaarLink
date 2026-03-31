@@ -45,7 +45,13 @@ type VendorProfile = {
 type VendorRow = {
   id: string;
   userId: string;
-  status: "PENDING" | "APPROVED" | "SUSPENDED";
+  status:
+    | "DRAFT"
+    | "PENDING"
+    | "CHANGES_REQUESTED"
+    | "APPROVED"
+    | "REJECTED"
+    | "SUSPENDED";
   rejectionReason: string | null;
   termsAccepted: boolean;
   approvedAt: string | null;
@@ -91,12 +97,18 @@ function normalizeSlugInput(raw: string): string {
 
 function statusHeading(status: VendorRow["status"]): string {
   switch (status) {
+    case "DRAFT":
+      return "Draft";
     case "PENDING":
       return "Pending approval (24-48 hours)";
+    case "CHANGES_REQUESTED":
+      return "Changes requested — update and resubmit";
     case "APPROVED":
       return "Approved";
+    case "REJECTED":
+      return "Application rejected";
     case "SUSPENDED":
-      return "Rejected";
+      return "Suspended";
     default:
       return status;
   }
@@ -104,12 +116,18 @@ function statusHeading(status: VendorRow["status"]): string {
 
 function statusColors(status: VendorRow["status"]): string {
   switch (status) {
+    case "DRAFT":
+      return "border-stone-200 bg-stone-50 text-stone-900";
     case "PENDING":
       return "border-yellow-200 bg-yellow-50 text-yellow-900";
+    case "CHANGES_REQUESTED":
+      return "border-orange-200 bg-orange-50 text-orange-900";
     case "APPROVED":
       return "border-green-200 bg-green-50 text-green-900";
-    case "SUSPENDED":
+    case "REJECTED":
       return "border-red-200 bg-red-50 text-red-900";
+    case "SUSPENDED":
+      return "border-red-300 bg-red-50 text-red-900";
     default:
       return "border-gray-200 bg-gray-50 text-gray-900";
   }
@@ -576,7 +594,13 @@ export default function VendorOnboardingPage() {
   }
 
   const status = vendor?.status;
-  const canEdit = !vendor || status === "SUSPENDED" || status === "PENDING";
+  const canEdit =
+    !vendor ||
+    status === "DRAFT" ||
+    status === "PENDING" ||
+    status === "CHANGES_REQUESTED" ||
+    status === "REJECTED" ||
+    status === "SUSPENDED";
   const emailVerifiedJustNow = urlFlags.emailVerified;
   const canSubmit = canEdit && me.emailVerified && !fieldsLocked;
   const stepLabels = ["Business details", "Address & bank", "Store profile"];
@@ -681,12 +705,18 @@ export default function VendorOnboardingPage() {
           {vendor.status === "PENDING" ? (
             <p className="mt-1 text-sm text-gray-600">We review new applications within one to two business days.</p>
           ) : null}
+          {vendor.status === "CHANGES_REQUESTED" ? (
+            <p className="mt-1 text-sm text-gray-600">
+              An administrator requested updates. Please review the feedback below, adjust your application, and resubmit.
+            </p>
+          ) : null}
           {vendor.approvedAt ? (
             <p className="mt-1 text-xs text-gray-500">Approved at: {new Date(vendor.approvedAt).toLocaleString()}</p>
           ) : null}
           {vendor.rejectionReason ? (
             <p className="mt-2 rounded border border-amber-200 bg-amber-50 p-2 text-sm text-amber-900">
-              Rejection reason: {vendor.rejectionReason}
+              {vendor.status === "CHANGES_REQUESTED" ? "Feedback: " : "Reason: "}
+              {vendor.rejectionReason}
             </p>
           ) : null}
           {vendor.profile ? (

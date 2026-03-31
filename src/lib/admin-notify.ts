@@ -19,6 +19,6 @@ export function notifyAdminVendorApplicationSubmitted(opts: {
   accountEmail: string;
   businessName: string;
 }): void {
-  const line = `[BazaarLink admin] Vendor application submitted — vendorId=${opts.vendorId} account=${opts.accountEmail} business="${opts.businessName}" | Review: /admin/vendors`;
+  const line = `[BazaarLink admin] Vendor application submitted — vendorId=${opts.vendorId} account=${opts.accountEmail} business="${opts.businessName}" | Review: /admin/vendors/${opts.vendorId}`;
   console.info(line);
 }

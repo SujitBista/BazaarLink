@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth/rbac";
-import { suspendVendor } from "@/services/vendor";
-import { adminSuspendVendorSchema, vendorIdParamSchema } from "@/lib/validations/vendor";
+import { rejectVendor } from "@/services/vendor";
+import { adminModerationNoteBodySchema, vendorIdParamSchema } from "@/lib/validations/vendor";
 import { fromServiceError, parseJsonBody, validationError } from "@/lib/api/errors";
 
 export async function POST(request: Request, { params }: { params: Promise<{ vendorId: string }> }) {
@@ -15,14 +15,14 @@ export async function POST(request: Request, { params }: { params: Promise<{ ven
 
     const parsedBody = await parseJsonBody(request);
     if (!parsedBody.ok) return parsedBody.response;
-    const parsedPayload = adminSuspendVendorSchema.safeParse(parsedBody.body ?? {});
-    if (!parsedPayload.success) {
-      return validationError(parsedPayload.error.flatten());
+    const payload = adminModerationNoteBodySchema.safeParse(parsedBody.body ?? {});
+    if (!payload.success) {
+      return validationError(payload.error.flatten());
     }
 
-    const vendor = await suspendVendor(parsed.data.vendorId, parsedPayload.data.rejectionReason, user.id);
+    const vendor = await rejectVendor(parsed.data.vendorId, user.id, payload.data.note);
     return NextResponse.json({ vendor });
   } catch (e) {
-    return fromServiceError(e, { error: "Suspend failed", code: "SUSPEND_VENDOR_FAILED" });
+    return fromServiceError(e, { error: "Reject failed", code: "REJECT_VENDOR_FAILED" });
   }
 }

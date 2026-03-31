@@ -1,6 +1,12 @@
 import { prisma } from "@/lib/db";
 import type { RegisterVendorInput, UpdateVendorProfileInput } from "@/lib/validations/vendor";
-import { BusinessType, Prisma, UserRole, VendorStatus } from "@prisma/client";
+import {
+  BusinessType,
+  Prisma,
+  UserRole,
+  VendorModerationAction,
+  VendorStatus,
+} from "@prisma/client";
 import { notifyAdminVendorApplicationSubmitted } from "@/lib/admin-notify";
 
 type VendorWithProfile = Prisma.VendorGetPayload<{ include: { profile: true } }>;
@@ -209,17 +215,27 @@ export async function submitVendorOnboarding(userId: string, input: RegisterVend
         });
       }
 
-      if (existingVendor.status !== VendorStatus.PENDING) {
+      const canResubmit =
+        existingVendor.status === VendorStatus.PENDING ||
+        existingVendor.status === VendorStatus.CHANGES_REQUESTED ||
+        existingVendor.status === VendorStatus.REJECTED;
+
+      if (!canResubmit) {
         throw createServiceError(
-          "Onboarding can only be submitted or updated while vendor status is PENDING",
+          "Onboarding can only be submitted or updated while vendor status allows edits",
           409,
           "INVALID_VENDOR_STATE"
         );
       }
 
+      const returnToPendingAfterResubmit =
+        existingVendor.status === VendorStatus.CHANGES_REQUESTED ||
+        existingVendor.status === VendorStatus.REJECTED;
+
       const updatedVendor = await tx.vendor.update({
         where: { id: existingVendor.id },
         data: {
+          ...(returnToPendingAfterResubmit ? { status: VendorStatus.PENDING } : {}),
           termsAccepted: input.termsAccepted,
           rejectionReason: null,
           approvedAt: null,
@@ -292,7 +308,32 @@ export async function listPendingVendors() {
   });
 }
 
-export async function approveVendor(vendorId: string, adminUserId: string) {
+async function appendModerationLog(
+  tx: Prisma.TransactionClient,
+  params: {
+    vendorId: string;
+    adminUserId: string;
+    action: VendorModerationAction;
+    note?: string | null;
+  }
+) {
+  await tx.vendorModerationLog.create({
+    data: {
+      vendorId: params.vendorId,
+      adminUserId: params.adminUserId,
+      action: params.action,
+      note: params.note?.trim() ? params.note.trim() : null,
+    },
+  });
+}
+
+export type AdminVendorListSort = "created_desc" | "created_asc" | "updated_desc";
+
+export async function approveVendor(
+  vendorId: string,
+  adminUserId: string,
+  options?: { note?: string | null }
+) {
   const vendor = await prisma.vendor.findUnique({
     where: { id: vendorId },
     include: { profile: true, user: { select: { id: true, email: true, role: true } } },
@@ -301,18 +342,27 @@ export async function approveVendor(vendorId: string, adminUserId: string) {
     throw createServiceError("Vendor not found", 404, "VENDOR_NOT_FOUND");
   }
 
-  // Idempotency: approving an already-approved vendor is a safe no-op.
   if (vendor.status === VendorStatus.APPROVED) {
     return vendor;
   }
 
-  // Business rules: allow approval from PENDING (and reinstatement from SUSPENDED).
-  if (vendor.status !== VendorStatus.PENDING && vendor.status !== VendorStatus.SUSPENDED) {
+  const allowedFrom: VendorStatus[] = [
+    VendorStatus.PENDING,
+    VendorStatus.CHANGES_REQUESTED,
+    VendorStatus.SUSPENDED,
+  ];
+  if (!allowedFrom.includes(vendor.status)) {
     throw createServiceError("Vendor cannot be approved from current status", 409, "INVALID_VENDOR_STATE");
   }
 
   const updated = await prisma.$transaction(async (tx) => {
-    // Ensure the owning user ends up with VENDOR role (no escalation beyond that).
+    await appendModerationLog(tx, {
+      vendorId,
+      adminUserId,
+      action: VendorModerationAction.APPROVE,
+      note: options?.note,
+    });
+
     if (vendor.user.role !== UserRole.VENDOR) {
       await tx.user.update({
         where: { id: vendor.userId },
@@ -335,7 +385,12 @@ export async function approveVendor(vendorId: string, adminUserId: string) {
   return updated;
 }
 
-export async function suspendVendor(vendorId: string, rejectionReason?: string) {
+export async function suspendVendor(vendorId: string, rejectionReason: string, adminUserId: string) {
+  const normalized = normalizeOptional(rejectionReason);
+  if (!normalized) {
+    throw createServiceError("Suspension reason is required", 400, "REASON_REQUIRED");
+  }
+
   const vendor = await prisma.vendor.findUnique({
     where: { id: vendorId },
     include: { profile: true, user: { select: { id: true, email: true } } },
@@ -344,23 +399,177 @@ export async function suspendVendor(vendorId: string, rejectionReason?: string) 
     throw createServiceError("Vendor not found", 404, "VENDOR_NOT_FOUND");
   }
 
-  // Idempotency: suspending an already-suspended vendor is a safe no-op.
   if (vendor.status === VendorStatus.SUSPENDED) {
     return vendor;
   }
 
-  // Business rules: allow suspension from PENDING or APPROVED.
-  if (vendor.status !== VendorStatus.PENDING && vendor.status !== VendorStatus.APPROVED) {
+  if (vendor.status !== VendorStatus.APPROVED) {
     throw createServiceError("Vendor cannot be suspended from current status", 409, "INVALID_VENDOR_STATE");
   }
 
-  return prisma.vendor.update({
+  return prisma.$transaction(async (tx) => {
+    await appendModerationLog(tx, {
+      vendorId,
+      adminUserId,
+      action: VendorModerationAction.SUSPEND,
+      note: normalized,
+    });
+
+    return tx.vendor.update({
+      where: { id: vendorId },
+      data: {
+        status: VendorStatus.SUSPENDED,
+        rejectionReason: normalized,
+      },
+      include: { profile: true, user: { select: { id: true, email: true } } },
+    });
+  });
+}
+
+export async function rejectVendor(vendorId: string, adminUserId: string, note: string) {
+  const normalized = normalizeOptional(note);
+  if (!normalized) {
+    throw createServiceError("Rejection reason is required", 400, "REASON_REQUIRED");
+  }
+
+  const vendor = await prisma.vendor.findUnique({
     where: { id: vendorId },
-    data: {
-      status: VendorStatus.SUSPENDED,
-      rejectionReason: normalizeOptional(rejectionReason),
-    },
     include: { profile: true, user: { select: { id: true, email: true } } },
+  });
+  if (!vendor) {
+    throw createServiceError("Vendor not found", 404, "VENDOR_NOT_FOUND");
+  }
+
+  if (vendor.status !== VendorStatus.PENDING && vendor.status !== VendorStatus.CHANGES_REQUESTED) {
+    throw createServiceError("Vendor cannot be rejected from current status", 409, "INVALID_VENDOR_STATE");
+  }
+
+  return prisma.$transaction(async (tx) => {
+    await appendModerationLog(tx, {
+      vendorId,
+      adminUserId,
+      action: VendorModerationAction.REJECT,
+      note: normalized,
+    });
+
+    return tx.vendor.update({
+      where: { id: vendorId },
+      data: {
+        status: VendorStatus.REJECTED,
+        rejectionReason: normalized,
+        approvedAt: null,
+        approvedById: null,
+      },
+      include: { profile: true, user: { select: { id: true, email: true } } },
+    });
+  });
+}
+
+export async function requestChangesVendor(vendorId: string, adminUserId: string, note: string) {
+  const normalized = normalizeOptional(note);
+  if (!normalized) {
+    throw createServiceError("Feedback is required", 400, "REASON_REQUIRED");
+  }
+
+  const vendor = await prisma.vendor.findUnique({
+    where: { id: vendorId },
+    include: { profile: true, user: { select: { id: true, email: true } } },
+  });
+  if (!vendor) {
+    throw createServiceError("Vendor not found", 404, "VENDOR_NOT_FOUND");
+  }
+
+  if (vendor.status !== VendorStatus.PENDING && vendor.status !== VendorStatus.REJECTED) {
+    throw createServiceError("Changes cannot be requested for this vendor in the current status", 409, "INVALID_VENDOR_STATE");
+  }
+
+  return prisma.$transaction(async (tx) => {
+    await appendModerationLog(tx, {
+      vendorId,
+      adminUserId,
+      action: VendorModerationAction.REQUEST_CHANGES,
+      note: normalized,
+    });
+
+    return tx.vendor.update({
+      where: { id: vendorId },
+      data: {
+        status: VendorStatus.CHANGES_REQUESTED,
+        rejectionReason: normalized,
+        approvedAt: null,
+        approvedById: null,
+      },
+      include: { profile: true, user: { select: { id: true, email: true } } },
+    });
+  });
+}
+
+export async function getVendorForAdminById(vendorId: string) {
+  return prisma.vendor.findUnique({
+    where: { id: vendorId },
+    include: {
+      user: { select: { id: true, email: true } },
+      profile: true,
+      moderationLogs: {
+        orderBy: { createdAt: "desc" },
+        include: { admin: { select: { id: true, email: true } } },
+      },
+    },
+  });
+}
+
+export async function getAdminVendorStatusCounts() {
+  const rows = await prisma.vendor.groupBy({
+    by: ["status"],
+    _count: { _all: true },
+  });
+  const counts: Partial<Record<VendorStatus, number>> = {};
+  for (const r of rows) {
+    counts[r.status] = r._count._all;
+  }
+  return counts;
+}
+
+export async function listVendorsForAdminQuery(params: {
+  q?: string;
+  status?: VendorStatus | "ALL";
+  sort?: AdminVendorListSort;
+  pending?: boolean;
+}) {
+  const clauses: Prisma.VendorWhereInput[] = [];
+
+  if (params.pending) {
+    clauses.push({ status: VendorStatus.PENDING });
+  } else if (params.status && params.status !== "ALL") {
+    clauses.push({ status: params.status });
+  }
+
+  const q = params.q?.trim();
+  if (q) {
+    clauses.push({
+      OR: [
+        { profile: { businessName: { contains: q, mode: "insensitive" } } },
+        { profile: { contactEmail: { contains: q, mode: "insensitive" } } },
+        { user: { email: { contains: q, mode: "insensitive" } } },
+        { profile: { panOrVatNumber: { contains: q, mode: "insensitive" } } },
+      ],
+    });
+  }
+
+  const where: Prisma.VendorWhereInput = clauses.length === 0 ? {} : clauses.length === 1 ? clauses[0]! : { AND: clauses };
+
+  const sort = params.sort ?? "created_desc";
+  const orderBy =
+    sort === "created_asc"
+      ? ({ createdAt: "asc" } as const)
+      : sort === "updated_desc"
+        ? ({ updatedAt: "desc" } as const)
+        : ({ createdAt: "desc" } as const);
+
+  return prisma.vendor.findMany({
+    where,
+    include: { user: { select: { id: true, email: true } }, profile: true },
+    orderBy,
   });
 }
 
