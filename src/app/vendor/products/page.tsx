@@ -779,10 +779,10 @@ export default function VendorProductsPage() {
                       <td className="py-2.5 pl-2 pr-3 align-middle text-right">
                         <div className="flex flex-wrap items-center justify-end gap-x-1 gap-y-1">
                           <a
-                            href={`/shop/product/${p.id}`}
+                            href={`/shop/product/${p.id}?preview=vendor`}
                             className="rounded px-1.5 py-0.5 text-xs font-medium text-orange-700 underline-offset-2 hover:underline"
                           >
-                            View
+                            Preview
                           </a>
                           <button
                             type="button"

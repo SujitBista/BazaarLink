@@ -1,6 +1,6 @@
 "use client";
 
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { fetchApiJson } from "@/lib/client/api-json";
 import { ProductImage } from "@/components/product-image";
@@ -18,7 +18,9 @@ type ProductDetail = {
 export default function ProductDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const productId = typeof params.productId === "string" ? params.productId : "";
+  const isPreviewMode = searchParams.get("preview") === "vendor";
   const [product, setProduct] = useState<ProductDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [variantId, setVariantId] = useState<string>("");
@@ -49,7 +51,7 @@ export default function ProductDetailPage() {
   }, [productId]);
 
   async function addToCart() {
-    if (!variantId) return;
+    if (!variantId || isPreviewMode) return;
     setAdding(true);
     setMsg(null);
     const res = await fetchApiJson<{ item: unknown }>("/api/cart/items", {
@@ -93,9 +95,17 @@ export default function ProductDetailPage() {
 
   return (
     <main className="mx-auto max-w-4xl px-4 py-10">
-      <a href="/shop" className="text-sm text-orange-700 underline">
-        ← Back to shop
+      <a href={isPreviewMode ? "/vendor/products" : "/shop"} className="text-sm text-orange-700 underline">
+        {isPreviewMode ? "← Back to vendor products" : "← Back to shop"}
       </a>
+      {isPreviewMode ? (
+        <div className="mt-4 rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+          <p className="font-medium">Preview mode - this is how customers see your product</p>
+          <a href={`/shop/product/${product.id}`} className="mt-1 inline-block text-blue-800 underline">
+            Open public page
+          </a>
+        </div>
+      ) : null}
       <div className="mt-6 grid gap-8 md:grid-cols-2">
         <div className="aspect-square overflow-hidden rounded-lg bg-gray-100">
           <ProductImage src={img} alt={product.name} />
@@ -121,34 +131,38 @@ export default function ProductDetailPage() {
                 </option>
               ))}
             </select>
-            <div>
-              <label className="text-sm font-medium text-gray-700" htmlFor="qty">
-                Quantity
-              </label>
-              <input
-                id="qty"
-                type="number"
-                min={1}
-                max={99}
-                value={qty}
-                onChange={(e) => setQty(Number(e.target.value) || 1)}
-                className="mt-1 w-24 rounded-md border border-gray-300 px-3 py-2 text-sm"
-              />
-            </div>
+            {!isPreviewMode ? (
+              <div>
+                <label className="text-sm font-medium text-gray-700" htmlFor="qty">
+                  Quantity
+                </label>
+                <input
+                  id="qty"
+                  type="number"
+                  min={1}
+                  max={99}
+                  value={qty}
+                  onChange={(e) => setQty(Number(e.target.value) || 1)}
+                  className="mt-1 w-24 rounded-md border border-gray-300 px-3 py-2 text-sm"
+                />
+              </div>
+            ) : null}
           </div>
 
           {selected ? <p className="mt-4 text-lg font-semibold">${selected.price}</p> : null}
 
-          {msg ? <p className="mt-3 text-sm text-amber-800">{msg}</p> : null}
+          {!isPreviewMode && msg ? <p className="mt-3 text-sm text-amber-800">{msg}</p> : null}
 
-          <button
-            type="button"
-            disabled={adding || !selected || selected.stock < qty}
-            onClick={() => void addToCart()}
-            className="mt-6 w-full rounded-md bg-gray-900 py-2.5 text-sm font-medium text-white disabled:opacity-50"
-          >
-            {adding ? "Adding…" : "Add to cart"}
-          </button>
+          {!isPreviewMode ? (
+            <button
+              type="button"
+              disabled={adding || !selected || selected.stock < qty}
+              onClick={() => void addToCart()}
+              className="mt-6 w-full rounded-md bg-gray-900 py-2.5 text-sm font-medium text-white disabled:opacity-50"
+            >
+              {adding ? "Adding…" : "Add to cart"}
+            </button>
+          ) : null}
         </div>
       </div>
     </main>
