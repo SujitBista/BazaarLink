@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { fetchApiJson, formatValidationDetails } from "@/lib/client/api-json";
 
 type MeUser = {
@@ -67,6 +67,42 @@ function formatProductPrice(value: unknown): string {
 
 type StatusFilter = "all" | "DRAFT" | "ACTIVE";
 
+/** Primary image only today; a `draftImages: ProductImageDraft[]` (with sortOrder) can extend this for galleries. */
+const PRODUCT_IMAGE_MAX_BYTES = 2 * 1024 * 1024;
+const PRODUCT_IMAGE_ACCEPT_ATTR = "image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp";
+const PRODUCT_IMAGE_MIME = new Set(["image/jpeg", "image/png", "image/webp"]);
+
+function validateProductImageFile(file: File): string | null {
+  const byMime = file.type && PRODUCT_IMAGE_MIME.has(file.type);
+  const byName = /\.(jpe?g|png|webp)$/i.test(file.name);
+  if (!byMime && !byName) {
+    return "Please use a JPG, PNG, or WebP image.";
+  }
+  if (file.size > PRODUCT_IMAGE_MAX_BYTES) {
+    return "Image must be 2MB or smaller.";
+  }
+  return null;
+}
+
+function InlineSpinner({ className }: { className?: string }) {
+  return (
+    <svg
+      className={`h-4 w-4 shrink-0 animate-spin text-current ${className ?? ""}`}
+      xmlns="http://www.w3.org/2000/svg"
+      fill="none"
+      viewBox="0 0 24 24"
+      aria-hidden
+    >
+      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+      <path
+        className="opacity-75"
+        fill="currentColor"
+        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+      />
+    </svg>
+  );
+}
+
 export default function VendorProductsPage() {
   const [me, setMe] = useState<MeUser | null | undefined>(undefined);
   /** `undefined` = not loaded yet (vendor role). */
@@ -95,6 +131,11 @@ export default function VendorProductsPage() {
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
   const [uploadedImageUrl, setUploadedImageUrl] = useState<string | null>(null);
+  /** When true on save, PATCH sends `images: []` to clear the catalog image. */
+  const [productImageCleared, setProductImageCleared] = useState(false);
+  const [imageFieldError, setImageFieldError] = useState<string | null>(null);
+  const [imageDropActive, setImageDropActive] = useState(false);
+  const productImageInputRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
     setLoadError(null);
@@ -145,6 +186,14 @@ export default function VendorProductsPage() {
     void load();
   }, [load]);
 
+  useEffect(() => {
+    return () => {
+      if (imagePreviewUrl?.startsWith("blob:")) {
+        URL.revokeObjectURL(imagePreviewUrl);
+      }
+    };
+  }, [imagePreviewUrl]);
+
   const approved = vendor?.status === "APPROVED";
   const canAdd = approved && categories.length > 0;
 
@@ -171,20 +220,23 @@ export default function VendorProductsPage() {
   async function uploadSelectedImage() {
     if (!imageFile) return null;
     setUploadingImage(true);
-    const form = new FormData();
-    form.append("file", imageFile);
-    form.append("kind", "logo");
-    const res = await fetchApiJson<{ url: string }>("/api/uploads/vendor", {
-      method: "POST",
-      body: form,
-    });
-    setUploadingImage(false);
-    if (!res.ok) {
-      setFormError(res.error);
-      return null;
+    try {
+      const form = new FormData();
+      form.append("file", imageFile);
+      form.append("kind", "logo");
+      const res = await fetchApiJson<{ url: string }>("/api/uploads/vendor", {
+        method: "POST",
+        body: form,
+      });
+      if (!res.ok) {
+        setFormError(res.error);
+        return null;
+      }
+      setUploadedImageUrl(res.data.url);
+      return res.data.url;
+    } finally {
+      setUploadingImage(false);
     }
-    setUploadedImageUrl(res.data.url);
-    return res.data.url;
   }
 
   function resetForm() {
@@ -198,6 +250,10 @@ export default function VendorProductsPage() {
     setImageFile(null);
     setImagePreviewUrl(null);
     setUploadedImageUrl(null);
+    setProductImageCleared(false);
+    setImageFieldError(null);
+    setImageDropActive(false);
+    if (productImageInputRef.current) productImageInputRef.current.value = "";
     setEditingId(null);
   }
 
@@ -235,6 +291,17 @@ export default function VendorProductsPage() {
       if (!imageUrl) return;
     }
 
+    let imagesPayload: { url: string; sortOrder: number }[] | undefined;
+    if (editingId) {
+      if (productImageCleared) {
+        imagesPayload = [];
+      } else if (imageUrl) {
+        imagesPayload = [{ url: imageUrl, sortOrder: 0 }];
+      }
+    } else {
+      imagesPayload = imageUrl ? [{ url: imageUrl, sortOrder: 0 }] : undefined;
+    }
+
     setSubmitting(true);
     const body = {
       categoryId,
@@ -242,7 +309,7 @@ export default function VendorProductsPage() {
       slug: normalizedSlug,
       description: description.trim() || undefined,
       status: editingId ? (editingProduct?.status ?? "DRAFT") : ("DRAFT" as const),
-      images: imageUrl ? [{ url: imageUrl, sortOrder: 0 }] : undefined,
+      images: imagesPayload,
       variants: [{ price: priceNum, stock: stockNum, sku: sku.trim() || undefined }],
     };
     const res = editingId
@@ -317,6 +384,47 @@ export default function VendorProductsPage() {
     await load();
   }
 
+  function openProductImagePicker() {
+    setImageFieldError(null);
+    productImageInputRef.current?.click();
+  }
+
+  function applyProductImageFile(file: File) {
+    const err = validateProductImageFile(file);
+    if (err) {
+      setImageFieldError(err);
+      return;
+    }
+    setImageFieldError(null);
+    setImageFile(file);
+    setUploadedImageUrl(null);
+    setProductImageCleared(false);
+    setImagePreviewUrl(URL.createObjectURL(file));
+  }
+
+  function onProductImageInputChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (file) applyProductImageFile(file);
+    e.target.value = "";
+  }
+
+  function removeProductImage() {
+    setImageFile(null);
+    setUploadedImageUrl(null);
+    setImagePreviewUrl(null);
+    setProductImageCleared(true);
+    setImageFieldError(null);
+    if (productImageInputRef.current) productImageInputRef.current.value = "";
+  }
+
+  function onProductImageDrop(e: React.DragEvent) {
+    e.preventDefault();
+    setImageDropActive(false);
+    if (uploadingImage) return;
+    const file = e.dataTransfer.files?.[0];
+    if (file) applyProductImageFile(file);
+  }
+
   function onEdit(product: ProductRow) {
     const firstVariant = product.variants[0];
     setEditingId(product.id);
@@ -330,6 +438,10 @@ export default function VendorProductsPage() {
     setUploadedImageUrl(product.images?.[0]?.url ?? null);
     setImagePreviewUrl(product.images?.[0]?.url ?? null);
     setImageFile(null);
+    setProductImageCleared(false);
+    setImageFieldError(null);
+    setImageDropActive(false);
+    if (productImageInputRef.current) productImageInputRef.current.value = "";
     setCategoryId(product.category.id);
     setShowProductForm(true);
   }
@@ -497,7 +609,7 @@ export default function VendorProductsPage() {
         </div>
 
         {showProductForm ? (
-          <div className="fixed inset-0 z-40 flex items-start justify-center p-4 sm:p-6">
+          <div className="fixed inset-0 z-40 flex min-h-0 items-start justify-center overflow-y-auto p-4 sm:p-6">
             <button
               type="button"
               aria-label="Close product form"
@@ -506,9 +618,9 @@ export default function VendorProductsPage() {
             />
             <section
               id="product-form"
-              className="relative z-10 max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-xl border border-white/40 bg-white/90 p-5 shadow-2xl"
+              className="relative z-10 flex min-h-0 max-h-[min(92vh,calc(100dvh-2rem))] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-white/40 bg-white/90 shadow-2xl"
             >
-              <div className="flex items-center justify-between gap-3">
+              <div className="flex shrink-0 items-center justify-between gap-3 border-b border-gray-100 px-5 pb-3 pt-5">
                 <h3 className="text-base font-semibold text-gray-900">{editingId ? "Edit product" : "Add a product"}</h3>
                 <button
                   type="button"
@@ -519,13 +631,17 @@ export default function VendorProductsPage() {
                 </button>
               </div>
               {!approved ? (
-                <p className="mt-2 text-sm text-gray-600">
+                <p className="px-5 py-4 text-sm text-gray-600">
                   Available only when your vendor status is <strong>APPROVED</strong>.
                 </p>
               ) : !canAdd ? (
-                <p className="mt-2 text-sm text-gray-600">Loading categories…</p>
+                <p className="px-5 py-4 text-sm text-gray-600">Loading categories…</p>
               ) : (
-                <form onSubmit={(e) => void onCreate(e)} className="mt-4 space-y-4">
+                <form
+                  onSubmit={(e) => void onCreate(e)}
+                  className="flex min-h-0 flex-1 flex-col overflow-hidden"
+                >
+                  <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain px-5 py-4">
                   <div>
                     <label htmlFor="categoryId" className="block text-sm font-medium text-gray-700">
                       Category <span className="text-red-600">*</span>
@@ -628,31 +744,131 @@ export default function VendorProductsPage() {
                     />
                   </div>
                   <div>
-                    <label htmlFor="pimage" className="block text-sm font-medium text-gray-700">
-                      Product image
-                    </label>
+                    <span className="block text-sm font-medium text-gray-700">Product image</span>
+                    <p className="mt-0.5 text-xs text-gray-500">JPG, PNG, or WebP · max 2MB</p>
                     <input
-                      id="pimage"
+                      ref={productImageInputRef}
+                      id="product-image-file"
                       type="file"
-                      accept="image/*"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0] ?? null;
-                        setImageFile(file);
-                        setUploadedImageUrl(null);
-                        if (file) {
-                          setImagePreviewUrl(URL.createObjectURL(file));
-                        } else {
-                          setImagePreviewUrl(editingProduct?.images?.[0]?.url ?? null);
-                        }
-                      }}
-                      className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                      accept={PRODUCT_IMAGE_ACCEPT_ATTR}
+                      className="sr-only"
+                      tabIndex={-1}
+                      aria-label="Upload product image"
+                      onChange={onProductImageInputChange}
                     />
                     {imagePreviewUrl ? (
-                      <img
-                        src={imagePreviewUrl}
-                        alt="Product preview"
-                        className="mt-3 h-24 w-24 rounded-md border border-gray-200 object-cover"
-                      />
+                      <>
+                        <p className="mt-2 text-center text-xs text-gray-500">
+                          Drag &amp; drop or click to replace
+                        </p>
+                        <div
+                          className={`mt-2 rounded-xl transition-colors ${
+                            imageDropActive ? "bg-orange-50/70 ring-2 ring-orange-400 ring-offset-2" : "bg-transparent ring-2 ring-transparent ring-offset-2"
+                          } ${uploadingImage ? "pointer-events-none opacity-70" : ""}`}
+                          onDragEnter={(e) => {
+                            e.preventDefault();
+                            if (!uploadingImage) setImageDropActive(true);
+                          }}
+                          onDragOver={(e) => {
+                            e.preventDefault();
+                            if (!uploadingImage) setImageDropActive(true);
+                          }}
+                          onDragLeave={(e) => {
+                            const next = e.relatedTarget;
+                            if (next instanceof Node && e.currentTarget.contains(next)) return;
+                            setImageDropActive(false);
+                          }}
+                          onDrop={onProductImageDrop}
+                        >
+                          <div className="flex flex-col items-center gap-4 py-2">
+                            <button
+                              type="button"
+                              onClick={openProductImagePicker}
+                              disabled={uploadingImage}
+                              className="group relative flex h-[220px] w-[220px] shrink-0 items-center justify-center rounded-xl border border-gray-200 bg-white p-3 shadow-sm transition hover:border-gray-300 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 disabled:cursor-not-allowed"
+                              aria-label="Replace product image"
+                            >
+                              {/* eslint-disable-next-line @next/next/no-img-element -- preview blob or remote URL */}
+                              <img
+                                src={imagePreviewUrl}
+                                alt=""
+                                className="max-h-[196px] max-w-[196px] object-contain"
+                              />
+                              {uploadingImage ? (
+                                <span className="absolute inset-0 flex flex-col items-center justify-center gap-2 rounded-lg bg-white/90 text-sm font-medium text-gray-800">
+                                  <InlineSpinner className="text-orange-600" />
+                                  Uploading…
+                                </span>
+                              ) : (
+                                <span className="pointer-events-none absolute inset-0 flex items-end justify-center rounded-lg bg-gradient-to-t from-black/40 to-transparent pb-2 text-xs font-medium text-white opacity-0 transition group-hover:opacity-100">
+                                  Click to change
+                                </span>
+                              )}
+                            </button>
+                            <div className="flex w-full max-w-[220px] flex-wrap items-center justify-center gap-4">
+                              <button
+                                type="button"
+                                onClick={openProductImagePicker}
+                                disabled={uploadingImage}
+                                className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-800 hover:bg-gray-50 disabled:opacity-50"
+                              >
+                                Change image
+                              </button>
+                              <button
+                                type="button"
+                                onClick={removeProductImage}
+                                disabled={uploadingImage}
+                                className="rounded-md border border-red-200 bg-white px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
+                              >
+                                Remove image
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </>
+                    ) : (
+                      <div
+                        className={`mt-2 rounded-xl border-2 border-dashed p-4 transition-colors ${
+                          imageDropActive ? "border-orange-400 bg-orange-50/60" : "border-gray-200 bg-gray-50/80"
+                        } ${uploadingImage ? "pointer-events-none opacity-70" : ""}`}
+                        onDragEnter={(e) => {
+                          e.preventDefault();
+                          if (!uploadingImage) setImageDropActive(true);
+                        }}
+                        onDragOver={(e) => {
+                          e.preventDefault();
+                          if (!uploadingImage) setImageDropActive(true);
+                        }}
+                        onDragLeave={(e) => {
+                          const next = e.relatedTarget;
+                          if (next instanceof Node && e.currentTarget.contains(next)) return;
+                          setImageDropActive(false);
+                        }}
+                        onDrop={onProductImageDrop}
+                      >
+                        <button
+                          type="button"
+                          onClick={openProductImagePicker}
+                          disabled={uploadingImage}
+                          className="flex w-full min-h-[7.5rem] flex-col items-center justify-center gap-2 rounded-lg px-4 py-6 text-center text-sm text-gray-600 transition hover:bg-white/80 disabled:opacity-50"
+                        >
+                          <span className="font-medium text-gray-800">Drag &amp; drop or click to upload</span>
+                          {uploadingImage ? (
+                            <span className="flex items-center gap-2 text-sm font-medium text-orange-700">
+                              <InlineSpinner className="text-orange-600" />
+                              Uploading…
+                            </span>
+                          ) : null}
+                        </button>
+                      </div>
+                    )}
+                    {imageFieldError ? (
+                      <div
+                        role="alert"
+                        className="mt-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800"
+                      >
+                        {imageFieldError}
+                      </div>
                     ) : null}
                   </div>
 
@@ -669,13 +885,22 @@ export default function VendorProductsPage() {
                     </div>
                   ) : null}
 
-                  <div className="flex flex-wrap items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-3">
                     <button
                       type="submit"
                       disabled={submitting || uploadingImage || !categoryId}
-                      className="rounded-md bg-orange-600 px-4 py-2 text-sm font-medium text-white shadow hover:bg-orange-700 disabled:opacity-50"
+                      className="inline-flex items-center justify-center gap-2 rounded-md bg-orange-600 px-4 py-2 text-sm font-medium text-white shadow hover:bg-orange-700 disabled:opacity-50"
                     >
-                      {submitting ? "Saving..." : editingId ? "Save changes" : "Create draft product"}
+                      {uploadingImage || submitting ? (
+                        <InlineSpinner className="text-white" />
+                      ) : null}
+                      {uploadingImage
+                        ? "Uploading…"
+                        : submitting
+                          ? "Saving…"
+                          : editingId
+                            ? "Save changes"
+                            : "Create draft product"}
                     </button>
                     <button
                       type="button"
@@ -683,10 +908,12 @@ export default function VendorProductsPage() {
                         resetForm();
                         setShowProductForm(false);
                       }}
-                      className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                      disabled={submitting || uploadingImage}
+                      className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
                     >
                       Cancel
                     </button>
+                  </div>
                   </div>
                 </form>
               )}
