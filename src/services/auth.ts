@@ -2,7 +2,7 @@ import { Prisma, UserRole } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
 import { createSession, setSessionCookie, clearSessionCookie, getSession } from "@/lib/auth/session";
-import type { SignupInput, LoginInput, PasswordResetConfirmInput } from "@/lib/validations/auth";
+import type { LoginInput, PasswordResetConfirmInput } from "@/lib/validations/auth";
 import type { SessionUser } from "@/types/api";
 import { createHash, randomBytes } from "crypto";
 
@@ -39,15 +39,21 @@ function toSessionUser(user: {
 }
 
 /**
- * Registers a new **customer** account. Roles other than CUSTOMER are assigned through
- * explicit admin or controlled onboarding flows, not public signup.
+ * Registers a new **customer-role** account (`User.role` is always CUSTOMER here).
+ * VENDOR / ADMIN are assigned only via admin or controlled onboarding flows.
  */
-export async function signup(input: SignupInput): Promise<SessionUser> {
+export async function signupCustomerAccount(input: {
+  email: string;
+  password: string;
+  /** Set on public customer signup; omitted for seller-intent signup until profile exists. */
+  fullName?: string | null;
+}): Promise<SessionUser> {
   const passwordHash = await hashPassword(input.password);
   try {
     const user = await prisma.user.create({
       data: {
         email: input.email,
+        fullName: input.fullName?.trim() || null,
         passwordHash,
         role: UserRole.CUSTOMER,
         emailVerified: false,
@@ -70,8 +76,12 @@ export async function login(input: LoginInput): Promise<SessionUser> {
   return toSessionUser(user);
 }
 
-export async function signupWithSession(input: SignupInput): Promise<SessionUser> {
-  const sessionUser = await signup(input);
+export async function signupCustomerWithSession(input: {
+  email: string;
+  password: string;
+  fullName?: string | null;
+}): Promise<SessionUser> {
+  const sessionUser = await signupCustomerAccount(input);
   const token = await createSession(sessionUser);
   await setSessionCookie(token);
   return sessionUser;
@@ -114,7 +124,7 @@ export async function getResolvedSession(): Promise<SessionUser | null> {
 export async function getUserAuthProfileById(userId: string) {
   return prisma.user.findUnique({
     where: { id: userId },
-    select: { id: true, email: true, role: true, emailVerified: true },
+    select: { id: true, email: true, fullName: true, role: true, emailVerified: true },
   });
 }
 

@@ -1,9 +1,18 @@
 "use client";
 
-import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { useParams, usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { fetchApiJson } from "@/lib/client/api-json";
 import { ProductImage } from "@/components/product-image";
+import { ShopHeaderNav } from "@/components/marketplace/shop-header-nav";
+import { UserRole } from "@/types/enums";
+
+type MeUser = {
+  id: string;
+  email: string;
+  role: (typeof UserRole)[keyof typeof UserRole];
+  emailVerified: boolean;
+};
 
 type Variant = { id: string; price: string; stock: number; sku: string | null };
 type ProductDetail = {
@@ -17,6 +26,7 @@ type ProductDetail = {
 
 export default function ProductDetailPage() {
   const params = useParams();
+  const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
   const productId = typeof params.productId === "string" ? params.productId : "";
@@ -28,6 +38,20 @@ export default function ProductDetailPage() {
   const [adding, setAdding] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [me, setMe] = useState<MeUser | null | undefined>(undefined);
+
+  const loginHref = `/login?next=${encodeURIComponent(pathname || `/shop/product/${productId}`)}`;
+
+  useEffect(() => {
+    void (async () => {
+      const res = await fetchApiJson<{ user: MeUser | null }>("/api/auth/me");
+      if (!res.ok) {
+        setMe(null);
+        return;
+      }
+      setMe(res.data.user);
+    })();
+  }, []);
 
   useEffect(() => {
     if (!productId) return;
@@ -69,11 +93,11 @@ export default function ProductDetailPage() {
     setAdding(false);
     if (!res.ok) {
       if (res.status === 401) {
-        setMsg("Please sign in (e.g. via /become-vendor or your auth flow) to use the cart.");
+        setMsg("You must be signed in to add items to your cart.");
         return;
       }
       if (res.status === 403) {
-        setToast("Vendors cannot add items to cart");
+        setToast("Only customer accounts can add items to the cart.");
         return;
       }
       setMsg(res.error);
@@ -115,9 +139,12 @@ export default function ProductDetailPage() {
           {toast}
         </div>
       ) : null}
-      <a href={isPreviewMode ? "/vendor/products" : "/shop"} className="text-sm text-orange-700 underline">
-        {isPreviewMode ? "← Back to vendor products" : "← Back to shop"}
-      </a>
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <a href={isPreviewMode ? "/vendor/products" : "/shop"} className="text-sm text-orange-700 underline">
+          {isPreviewMode ? "← Back to vendor products" : "← Back to shop"}
+        </a>
+        {!isPreviewMode ? <ShopHeaderNav /> : null}
+      </div>
       {isPreviewMode ? (
         <div className="mt-4 rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
           <p className="font-medium">Preview mode - this is how customers see your product</p>
@@ -171,9 +198,28 @@ export default function ProductDetailPage() {
 
           {selected ? <p className="mt-4 text-lg font-semibold">${selected.price}</p> : null}
 
-          {!isPreviewMode && msg ? <p className="mt-3 text-sm text-amber-800">{msg}</p> : null}
+          {!isPreviewMode && msg ? (
+            <p className="mt-3 text-sm text-amber-800">
+              {msg}{" "}
+              {msg.includes("signed in") ? (
+                <a href={loginHref} className="font-medium text-orange-700 underline">
+                  Sign in
+                </a>
+              ) : null}
+            </p>
+          ) : null}
 
-          {!isPreviewMode ? (
+          {!isPreviewMode && me === undefined ? (
+            <p className="mt-6 text-sm text-gray-500">Loading…</p>
+          ) : null}
+          {!isPreviewMode && me === null ? (
+            <p className="mt-6 text-sm text-gray-700">
+              <a href={loginHref} className="font-semibold text-orange-700 underline">
+                Sign in to add to cart
+              </a>
+            </p>
+          ) : null}
+          {!isPreviewMode && me?.role === UserRole.CUSTOMER ? (
             <button
               type="button"
               disabled={adding || !selected || selected.stock < qty}
@@ -182,6 +228,12 @@ export default function ProductDetailPage() {
             >
               {adding ? "Adding…" : "Add to cart"}
             </button>
+          ) : null}
+          {!isPreviewMode && me?.role === UserRole.VENDOR ? (
+            <p className="mt-6 text-sm text-gray-600">Vendor accounts cannot purchase products.</p>
+          ) : null}
+          {!isPreviewMode && me?.role === UserRole.ADMIN ? (
+            <p className="mt-6 text-sm text-gray-600">Admin accounts cannot purchase products.</p>
           ) : null}
         </div>
       </div>

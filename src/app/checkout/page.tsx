@@ -194,7 +194,7 @@ export default function CheckoutPage() {
             <h1 className="text-xl font-semibold text-gray-900">Payment complete</h1>
             <p className="mt-2 text-sm text-gray-600">Order {order.id} is paid.</p>
             <a
-              href="/account/orders"
+              href="/orders"
               className="mt-8 inline-flex w-full items-center justify-center rounded-xl bg-orange-600 px-4 py-3.5 text-sm font-semibold text-white shadow-md transition hover:bg-orange-700"
             >
               View orders
@@ -214,7 +214,7 @@ export default function CheckoutPage() {
         </div>
 
         {me === undefined ? <p className="text-gray-600">Loading…</p> : null}
-        {blockedNonCustomer ? <NonCustomerCartNotice /> : null}
+        {blockedNonCustomer && me ? <NonCustomerCartNotice role={me.role} /> : null}
 
         {!blockedNonCustomer && loading ? <p className="text-gray-600">Loading…</p> : null}
         {!blockedNonCustomer && error ? (

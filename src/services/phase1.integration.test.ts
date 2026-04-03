@@ -6,7 +6,7 @@ import {
   login,
   requestEmailVerification,
   requestPasswordReset,
-  signup,
+  signupCustomerAccount,
 } from "@/services/auth";
 import { approveVendor, submitVendorOnboarding, suspendVendor, toNonAdminVendorResponse } from "@/services/vendor";
 import { UserRole, VendorStatus } from "@prisma/client";
@@ -68,7 +68,7 @@ describe("Phase 1 integration and edge cases", () => {
     const email = uniqueEmail("duplicate-signup").toUpperCase();
     const payload = { email: `  ${email}  `, password: "Pass1234" };
 
-    const results = await Promise.allSettled([signup(payload), signup(payload)]);
+    const results = await Promise.allSettled([signupCustomerAccount(payload), signupCustomerAccount(payload)]);
     const fulfilled = results.filter((result) => result.status === "fulfilled");
     const rejected = results.filter((result) => result.status === "rejected");
 
@@ -85,7 +85,7 @@ describe("Phase 1 integration and edge cases", () => {
 
   it("keeps login failures indistinguishable for invalid email and password", async () => {
     const email = uniqueEmail("login");
-    await signup({ email, password: "Pass1234" });
+    await signupCustomerAccount({ email, password: "Pass1234" });
 
     type AuthErr = Error & { statusCode?: number; code?: string };
     const badEmailError = (await login({ email: uniqueEmail("missing"), password: "Pass1234" }).catch(
@@ -101,7 +101,7 @@ describe("Phase 1 integration and edge cases", () => {
 
   it("handles verification token expiry and single-use semantics", async () => {
     const email = uniqueEmail("verify");
-    const user = await signup({ email, password: "Pass1234" });
+    const user = await signupCustomerAccount({ email, password: "Pass1234" });
 
     const first = await requestEmailVerification(email);
     expect(first.token).toBeTruthy();
@@ -119,7 +119,7 @@ describe("Phase 1 integration and edge cases", () => {
     expect(second.token).toBeNull();
 
     const unverifiedEmail = uniqueEmail("verify-expired");
-    await signup({ email: unverifiedEmail, password: "Pass1234" });
+    await signupCustomerAccount({ email: unverifiedEmail, password: "Pass1234" });
     const expiring = await requestEmailVerification(unverifiedEmail);
     await prisma.emailVerificationToken.updateMany({
       where: { user: { email: unverifiedEmail }, usedAt: null },
@@ -133,7 +133,7 @@ describe("Phase 1 integration and edge cases", () => {
 
   it("handles password reset token single-use and expiry", async () => {
     const email = uniqueEmail("pwd-reset");
-    await signup({ email, password: "Pass1234" });
+    await signupCustomerAccount({ email, password: "Pass1234" });
 
     const { token } = await requestPasswordReset(email);
     expect(token).toBeTruthy();
@@ -150,7 +150,7 @@ describe("Phase 1 integration and edge cases", () => {
   });
 
   it("enforces onboarding gating, idempotent resubmission, moderation transitions, and privacy", async () => {
-    const user = await signup({ email: uniqueEmail("vendor"), password: "Pass1234" });
+    const user = await signupCustomerAccount({ email: uniqueEmail("vendor"), password: "Pass1234" });
 
     const blocked = (await submitVendorOnboarding(user.id, onboardingPayload).catch(
       (e: Error & { code?: string; statusCode?: number }) => e
@@ -228,8 +228,8 @@ describe("Phase 1 integration and edge cases", () => {
   });
 
   it("rejects duplicate store slug across vendors", async () => {
-    const userA = await signup({ email: uniqueEmail("slug-a"), password: "Pass1234" });
-    const userB = await signup({ email: uniqueEmail("slug-b"), password: "Pass1234" });
+    const userA = await signupCustomerAccount({ email: uniqueEmail("slug-a"), password: "Pass1234" });
+    const userB = await signupCustomerAccount({ email: uniqueEmail("slug-b"), password: "Pass1234" });
     await prisma.user.updateMany({
       where: { id: { in: [userA.id, userB.id] } },
       data: { emailVerified: true },
