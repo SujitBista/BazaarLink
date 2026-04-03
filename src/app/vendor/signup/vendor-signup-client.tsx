@@ -38,10 +38,10 @@ export function VendorSignupClient() {
     setError(null);
     setValidationLines([]);
     setSubmitting(true);
-    const res = await fetchApiJson<AuthResponse>("/api/auth/signup", {
+    const res = await fetchApiJson<AuthResponse>("/api/auth/signup/vendor", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password, intent: "vendor" }),
+      body: JSON.stringify({ email, password }),
     });
     setSubmitting(false);
     if (!res.ok) {

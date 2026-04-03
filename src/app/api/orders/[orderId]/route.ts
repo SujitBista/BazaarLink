@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireAuth } from "@/lib/auth/rbac";
+import { requireCustomer } from "@/lib/auth/rbac";
 import { getOrderForCustomer } from "@/services/order";
 import { fromServiceError, validationError } from "@/lib/api/errors";
 import { z } from "zod";
@@ -13,7 +13,7 @@ export async function GET(
   { params }: { params: Promise<{ orderId: string }> }
 ) {
   try {
-    const user = await requireAuth();
+    const user = await requireCustomer();
     const { orderId } = await params;
     const parsed = orderIdParamSchema.safeParse({ orderId });
     if (!parsed.success) {

@@ -40,11 +40,8 @@ export function BecomeVendorClient() {
     setError(null);
     setValidationLines([]);
     setSubmitting(true);
-    const path = mode === "login" ? "/api/auth/login" : "/api/auth/signup";
-    const body =
-      mode === "signup"
-        ? { email, password, intent: "vendor" as const }
-        : { email, password };
+    const path = mode === "login" ? "/api/auth/login" : "/api/auth/signup/vendor";
+    const body = { email, password };
     const res = await fetchApiJson<AuthResponse>(path, {
       method: "POST",
       headers: { "Content-Type": "application/json" },

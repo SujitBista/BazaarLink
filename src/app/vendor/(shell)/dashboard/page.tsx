@@ -73,21 +73,6 @@ export default function VendorDashboardPage() {
       <h1 className="text-2xl font-semibold text-gray-900">Vendor dashboard</h1>
       <p className="mt-1 text-sm text-gray-600">Manage catalog and see orders that include your products.</p>
 
-      <nav className="mt-6 flex flex-wrap gap-4 text-sm">
-        <a href="/vendor/dashboard" className="text-orange-700 underline">
-          Dashboard
-        </a>
-        <a href="/vendor/products" className="text-gray-700 underline">
-          Products
-        </a>
-        <a href="/vendor/orders" className="text-gray-700 underline">
-          Orders
-        </a>
-        <a href="/vendor/settings" className="text-gray-700 underline">
-          Settings
-        </a>
-      </nav>
-
       {showApprovalBanner ? (
         <div className="mt-5 flex items-start justify-between gap-3 rounded-md border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-900">
           <p>🎉 Your store is approved! Start selling now.</p>

@@ -15,11 +15,13 @@ type Props = {
   redirectTo: string;
   title: string;
   subtitle?: string;
+  /** Shown above the form (e.g. after successful signup redirect). */
+  successMessage?: string;
   /** Extra content below the form (e.g. links to signup). */
   extraLinks?: ReactNode;
 };
 
-export function LoginForm({ redirectTo, title, subtitle, extraLinks }: Props) {
+export function LoginForm({ redirectTo, title, subtitle, successMessage, extraLinks }: Props) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -42,13 +44,23 @@ export function LoginForm({ redirectTo, title, subtitle, extraLinks }: Props) {
       if (res.details) setDetails(formatValidationDetails(res.details));
       return;
     }
-    window.location.assign(redirectTo);
+    const { user } = res.data;
+    let dest = redirectTo;
+    if (user.role === "VENDOR") dest = "/vendor/dashboard";
+    else if (user.role === "ADMIN") dest = "/admin/analytics";
+    window.location.assign(dest);
   }
 
   return (
     <main className="mx-auto min-h-[70vh] max-w-md px-4 py-16">
       <h1 className="text-2xl font-semibold text-gray-900">{title}</h1>
       {subtitle ? <p className="mt-2 text-sm text-gray-600">{subtitle}</p> : null}
+
+      {successMessage ? (
+        <p className="mt-4 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900" role="status">
+          {successMessage}
+        </p>
+      ) : null}
 
       <form onSubmit={(e) => void onSubmit(e)} className="mt-8 space-y-4">
         <div>

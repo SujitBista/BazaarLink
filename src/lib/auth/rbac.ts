@@ -5,8 +5,7 @@ import { UserRole } from "@/types/enums";
 import type { Vendor } from "@prisma/client";
 import { VendorStatus } from "@prisma/client";
 
-export const CART_CHECKOUT_CUSTOMER_ONLY_MESSAGE =
-  "Only customers can access cart and checkout";
+export const CUSTOMER_ONLY_MESSAGE = "Only customers can access this resource";
 
 function unauthorized(): never {
   const err = new Error("Unauthorized");
@@ -53,9 +52,14 @@ export async function requireApprovedVendor(): Promise<{ user: SessionUser; vend
   return { user, vendor };
 }
 
-/** Cart, checkout, and completing checkout (e.g. pay). */
-export async function requireCustomerForCartCheckout(): Promise<SessionUser> {
+/** Cart, checkout, orders, and payment completion — `User.role` must be CUSTOMER. */
+export async function requireCustomer(): Promise<SessionUser> {
   const user = await requireAuth();
-  if (user.role !== UserRole.CUSTOMER) forbidden(CART_CHECKOUT_CUSTOMER_ONLY_MESSAGE);
+  if (user.role !== UserRole.CUSTOMER) forbidden(CUSTOMER_ONLY_MESSAGE);
   return user;
 }
+
+/** @deprecated Use `requireCustomer`. */
+export const requireCustomerForCartCheckout = requireCustomer;
+/** @deprecated Use `CUSTOMER_ONLY_MESSAGE`. */
+export const CART_CHECKOUT_CUSTOMER_ONLY_MESSAGE = CUSTOMER_ONLY_MESSAGE;

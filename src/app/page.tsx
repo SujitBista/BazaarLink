@@ -22,7 +22,8 @@ export default async function HomePage({
         <details className="rounded-lg border border-stone-200 bg-white p-4 text-sm text-stone-500">
           <summary className="cursor-pointer font-medium text-stone-600">API routes (development)</summary>
           <ul className="mt-3 list-inside list-disc space-y-1">
-            <li>POST /api/auth/signup – signup (body: email, password, role)</li>
+            <li>POST /api/auth/signup – customer signup (body: fullName, email, password, confirmPassword)</li>
+            <li>POST /api/auth/signup/vendor – seller account step (body: email, password)</li>
             <li>POST /api/auth/login – login</li>
             <li>POST /api/auth/logout – logout</li>
             <li>GET /api/auth/me – current session</li>
