@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
-import { requireAuth } from "@/lib/auth/rbac";
+import { requireCustomerForCartCheckout } from "@/lib/auth/rbac";
 import { checkoutCart } from "@/services/order";
 import { checkoutSchema } from "@/lib/validations/cart";
 import { fromServiceError, parseJsonBody, validationError } from "@/lib/api/errors";
 
 export async function POST(request: Request) {
   try {
-    const user = await requireAuth();
+    const user = await requireCustomerForCartCheckout();
     const parsedBody = await parseJsonBody(request);
     if (!parsedBody.ok) return parsedBody.response;
     const parsed = checkoutSchema.safeParse(parsedBody.body);

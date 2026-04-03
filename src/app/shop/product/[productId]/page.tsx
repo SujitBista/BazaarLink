@@ -27,6 +27,7 @@ export default function ProductDetailPage() {
   const [qty, setQty] = useState(1);
   const [adding, setAdding] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
 
   useEffect(() => {
     if (!productId) return;
@@ -50,6 +51,12 @@ export default function ProductDetailPage() {
     };
   }, [productId]);
 
+  useEffect(() => {
+    if (!toast) return;
+    const id = window.setTimeout(() => setToast(null), 4000);
+    return () => window.clearTimeout(id);
+  }, [toast]);
+
   async function addToCart() {
     if (!variantId || isPreviewMode) return;
     setAdding(true);
@@ -63,6 +70,10 @@ export default function ProductDetailPage() {
     if (!res.ok) {
       if (res.status === 401) {
         setMsg("Please sign in (e.g. via /become-vendor or your auth flow) to use the cart.");
+        return;
+      }
+      if (res.status === 403) {
+        setToast("Vendors cannot add items to cart");
         return;
       }
       setMsg(res.error);
@@ -94,7 +105,16 @@ export default function ProductDetailPage() {
   const selected = product.variants.find((v) => v.id === variantId);
 
   return (
-    <main className="mx-auto max-w-4xl px-4 py-10">
+    <main className="relative mx-auto max-w-4xl px-4 py-10">
+      {toast ? (
+        <div
+          role="status"
+          aria-live="polite"
+          className="fixed bottom-6 left-1/2 z-50 max-w-md -translate-x-1/2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-center text-sm font-medium text-amber-950 shadow-lg"
+        >
+          {toast}
+        </div>
+      ) : null}
       <a href={isPreviewMode ? "/vendor/products" : "/shop"} className="text-sm text-orange-700 underline">
         {isPreviewMode ? "← Back to vendor products" : "← Back to shop"}
       </a>

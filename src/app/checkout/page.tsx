@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { fetchApiJson, formatValidationDetails } from "@/lib/client/api-json";
+import { UserRole } from "@/types/enums";
+import { NonCustomerCartNotice } from "@/components/marketplace/non-customer-cart-notice";
 
 type Address = {
   id: string;
@@ -12,6 +14,13 @@ type Address = {
 };
 
 type Order = { id: string; status: string; totalAmount: string };
+
+type MeUser = {
+  id: string;
+  email: string;
+  role: (typeof UserRole)[keyof typeof UserRole];
+  emailVerified: boolean;
+};
 
 function TrustIndicators() {
   const items = [
@@ -58,6 +67,7 @@ function TrustIndicators() {
 }
 
 export default function CheckoutPage() {
+  const [me, setMe] = useState<MeUser | null | undefined>(undefined);
   const [addresses, setAddresses] = useState<Address[]>([]);
   const [addressId, setAddressId] = useState("");
   const [loading, setLoading] = useState(true);
@@ -86,8 +96,24 @@ export default function CheckoutPage() {
   }, []);
 
   useEffect(() => {
+    void (async () => {
+      const meRes = await fetchApiJson<{ user: MeUser | null }>("/api/auth/me");
+      if (!meRes.ok) {
+        setMe(null);
+        return;
+      }
+      setMe(meRes.data.user);
+    })();
+  }, []);
+
+  useEffect(() => {
+    if (me === undefined) return;
+    if (me && me.role !== UserRole.CUSTOMER) {
+      setLoading(false);
+      return;
+    }
     void load();
-  }, [load]);
+  }, [me, load]);
 
   useEffect(() => {
     if (addresses.length > 0 && !addressId) {
@@ -130,6 +156,10 @@ export default function CheckoutPage() {
     });
     setSubmitting(false);
     if (!res.ok) {
+      if (res.status === 403) {
+        setError(res.error);
+        return;
+      }
       setError(res.error);
       return;
     }
@@ -148,6 +178,8 @@ export default function CheckoutPage() {
     }
     setOrder(res.data.order);
   }
+
+  const blockedNonCustomer = me !== undefined && me !== null && me.role !== UserRole.CUSTOMER;
 
   if (order?.status === "PAID") {
     return (
@@ -181,12 +213,15 @@ export default function CheckoutPage() {
           <p className="mt-1 text-sm text-gray-500">Enter shipping details and place your order.</p>
         </div>
 
-        {loading ? <p className="text-gray-600">Loading…</p> : null}
-        {error ? (
+        {me === undefined ? <p className="text-gray-600">Loading…</p> : null}
+        {blockedNonCustomer ? <NonCustomerCartNotice /> : null}
+
+        {!blockedNonCustomer && loading ? <p className="text-gray-600">Loading…</p> : null}
+        {!blockedNonCustomer && error ? (
           <p className="mb-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{error}</p>
         ) : null}
 
-        {!order ? (
+        {!blockedNonCustomer && !order ? (
           <>
             <section className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm sm:p-8">
               <h2 className="text-base font-semibold text-gray-900">Shipping address</h2>
@@ -272,7 +307,7 @@ export default function CheckoutPage() {
               <TrustIndicators />
             </div>
           </>
-        ) : (
+        ) : !blockedNonCustomer && order ? (
           <section className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm sm:p-8">
             <h2 className="text-base font-semibold text-gray-900">Payment</h2>
             <p className="mt-3 text-sm text-gray-600">
@@ -297,14 +332,16 @@ export default function CheckoutPage() {
             </button>
             <p className="mt-3 text-xs text-gray-500">Dev: simulates PSP capture and records commissions.</p>
           </section>
-        )}
+        ) : null}
 
-        <a
-          href="/cart"
-          className="mt-10 inline-flex text-sm font-medium text-gray-600 transition hover:text-gray-900"
-        >
-          ← Back to cart
-        </a>
+        {!blockedNonCustomer ? (
+          <a
+            href="/cart"
+            className="mt-10 inline-flex text-sm font-medium text-gray-600 transition hover:text-gray-900"
+          >
+            ← Back to cart
+          </a>
+        ) : null}
       </div>
     </main>
   );

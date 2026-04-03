@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireAuth } from "@/lib/auth/rbac";
+import { requireCustomerForCartCheckout } from "@/lib/auth/rbac";
 import { confirmOrderPayment } from "@/services/order";
 import { fromServiceError, validationError } from "@/lib/api/errors";
 import { z } from "zod";
@@ -14,7 +14,7 @@ export async function POST(
   { params }: { params: Promise<{ orderId: string }> }
 ) {
   try {
-    const user = await requireAuth();
+    const user = await requireCustomerForCartCheckout();
     const { orderId } = await params;
     const parsed = orderIdParamSchema.safeParse({ orderId });
     if (!parsed.success) {
