@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { fetchApiJson } from "@/lib/client/api-json";
+import { UserRole } from "@/types/enums";
+import { NonCustomerCartNotice } from "@/components/marketplace/non-customer-cart-notice";
 
 type CartItem = {
   id: string;
@@ -32,6 +34,13 @@ type Address = {
   city: string;
   postalCode: string;
   country: string;
+};
+
+type MeUser = {
+  id: string;
+  email: string;
+  role: (typeof UserRole)[keyof typeof UserRole];
+  emailVerified: boolean;
 };
 
 function formatMoney(amount: string | number) {
@@ -99,6 +108,7 @@ function ReturnIcon() {
 }
 
 export default function CartPage() {
+  const [me, setMe] = useState<MeUser | null | undefined>(undefined);
   const [cart, setCart] = useState<Cart | null>(null);
   const [summary, setSummary] = useState<CartSummary | null>(null);
   const [addresses, setAddresses] = useState<Address[]>([]);
@@ -115,6 +125,10 @@ export default function CartPage() {
         setError("Sign in to view your cart.");
         return;
       }
+      if (cartRes.status === 403) {
+        setError(cartRes.error);
+        return;
+      }
       setError(cartRes.error);
       return;
     }
@@ -128,8 +142,24 @@ export default function CartPage() {
   }, []);
 
   useEffect(() => {
+    void (async () => {
+      const meRes = await fetchApiJson<{ user: MeUser | null }>("/api/auth/me");
+      if (!meRes.ok) {
+        setMe(null);
+        return;
+      }
+      setMe(meRes.data.user);
+    })();
+  }, []);
+
+  useEffect(() => {
+    if (me === undefined) return;
+    if (me && me.role !== UserRole.CUSTOMER) {
+      setLoading(false);
+      return;
+    }
     void refresh();
-  }, [refresh]);
+  }, [me, refresh]);
 
   async function updateQty(itemId: string, quantity: number) {
     if (quantity < 1 || quantity > 99) return;
@@ -157,6 +187,7 @@ export default function CartPage() {
   }
 
   const primary = cart && cart.items.length > 0 && summary;
+  const blockedNonCustomer = me !== undefined && me !== null && me.role !== UserRole.CUSTOMER;
 
   return (
     <main className="min-h-screen bg-stone-50/80">
@@ -174,14 +205,21 @@ export default function CartPage() {
           </a>
         </div>
 
-        {loading ? (
+        {me === undefined ? (
           <p className="text-gray-600">Loading your cart…</p>
         ) : null}
-        {error ? (
+        {blockedNonCustomer ? (
+          <NonCustomerCartNotice />
+        ) : null}
+
+        {!blockedNonCustomer && loading ? (
+          <p className="text-gray-600">Loading your cart…</p>
+        ) : null}
+        {!blockedNonCustomer && error ? (
           <p className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{error}</p>
         ) : null}
 
-        {!loading && cart && cart.items.length === 0 ? (
+        {!blockedNonCustomer && !loading && cart && cart.items.length === 0 ? (
           <div className="rounded-2xl border border-gray-200 bg-white p-10 text-center shadow-sm">
             <p className="text-gray-600">Your cart is empty.</p>
             <a
@@ -193,7 +231,7 @@ export default function CartPage() {
           </div>
         ) : null}
 
-        {primary ? (
+        {!blockedNonCustomer && primary ? (
           <div className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_400px] lg:items-start lg:gap-12">
             <section aria-label="Cart items">
               <div className="mb-4 flex items-baseline justify-between">

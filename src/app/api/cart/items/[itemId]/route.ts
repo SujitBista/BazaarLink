@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireAuth } from "@/lib/auth/rbac";
+import { requireCustomerForCartCheckout } from "@/lib/auth/rbac";
 import { removeCartItem, sanitizeCartItemLine, updateCartItemQuantity } from "@/services/cart";
 import { updateCartItemSchema } from "@/lib/validations/cart";
 import { fromServiceError, parseJsonBody, validationError } from "@/lib/api/errors";
@@ -14,7 +14,7 @@ export async function PATCH(
   { params }: { params: Promise<{ itemId: string }> }
 ) {
   try {
-    const user = await requireAuth();
+    const user = await requireCustomerForCartCheckout();
     const { itemId } = await params;
     const idParsed = itemIdParamSchema.safeParse({ itemId });
     if (!idParsed.success) {
@@ -40,7 +40,7 @@ export async function DELETE(
   { params }: { params: Promise<{ itemId: string }> }
 ) {
   try {
-    const user = await requireAuth();
+    const user = await requireCustomerForCartCheckout();
     const { itemId } = await params;
     const idParsed = itemIdParamSchema.safeParse({ itemId });
     if (!idParsed.success) {

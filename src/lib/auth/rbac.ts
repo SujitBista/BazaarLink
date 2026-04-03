@@ -1,8 +1,12 @@
 import { prisma } from "@/lib/db";
 import { getResolvedSession } from "@/services/auth";
 import type { SessionUser } from "@/types/api";
+import { UserRole } from "@/types/enums";
 import type { Vendor } from "@prisma/client";
 import { VendorStatus } from "@prisma/client";
+
+export const CART_CHECKOUT_CUSTOMER_ONLY_MESSAGE =
+  "Only customers can access cart and checkout";
 
 function unauthorized(): never {
   const err = new Error("Unauthorized");
@@ -47,4 +51,11 @@ export async function requireApprovedVendor(): Promise<{ user: SessionUser; vend
   if (!vendor) forbidden();
   if (vendor.status !== VendorStatus.APPROVED) forbidden();
   return { user, vendor };
+}
+
+/** Cart, checkout, and completing checkout (e.g. pay). */
+export async function requireCustomerForCartCheckout(): Promise<SessionUser> {
+  const user = await requireAuth();
+  if (user.role !== UserRole.CUSTOMER) forbidden(CART_CHECKOUT_CUSTOMER_ONLY_MESSAGE);
+  return user;
 }

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { Decimal } from "@prisma/client/runtime/library";
-import { requireAuth } from "@/lib/auth/rbac";
+import { requireCustomerForCartCheckout } from "@/lib/auth/rbac";
 import { getCartWithItems, sanitizeCartForClient } from "@/services/cart";
 import { getDefaultShippingAmount } from "@/config/env";
 import { fromServiceError } from "@/lib/api/errors";
@@ -24,7 +24,7 @@ function buildCartSummary(cart: Awaited<ReturnType<typeof sanitizeCartForClient>
 
 export async function GET() {
   try {
-    const user = await requireAuth();
+    const user = await requireCustomerForCartCheckout();
     const cart = sanitizeCartForClient(await getCartWithItems(user.id));
     const summary = buildCartSummary(cart);
     return NextResponse.json({ cart, summary });
