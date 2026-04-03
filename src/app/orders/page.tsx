@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { fetchApiJson } from "@/lib/client/api-json";
-import { ShopHeaderNav } from "@/components/marketplace/shop-header-nav";
+import { PublicHeader } from "@/components/marketplace/public-header";
 
 type OrderItemRow = {
   id: string;
@@ -58,7 +58,9 @@ export default function CustomerOrdersPage() {
   }, [load]);
 
   return (
-    <main className="min-h-screen bg-stone-50/80">
+    <div className="min-h-screen bg-stone-50/80">
+      <PublicHeader />
+      <main>
       <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6 lg:px-8 lg:py-12">
         <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
@@ -66,7 +68,6 @@ export default function CustomerOrdersPage() {
             <p className="mt-1 text-sm text-gray-500">Order history and status for your account.</p>
           </div>
           <div className="flex flex-wrap items-center justify-end gap-4">
-            <ShopHeaderNav />
             <a href="/shop" className="text-sm font-medium text-orange-700 hover:text-orange-800">
               Continue shopping
             </a>
@@ -131,6 +132,7 @@ export default function CustomerOrdersPage() {
           </ul>
         ) : null}
       </div>
-    </main>
+      </main>
+    </div>
   );
 }

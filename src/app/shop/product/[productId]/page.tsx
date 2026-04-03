@@ -4,7 +4,7 @@ import { useParams, usePathname, useRouter, useSearchParams } from "next/navigat
 import { useEffect, useState } from "react";
 import { fetchApiJson } from "@/lib/client/api-json";
 import { ProductImage } from "@/components/product-image";
-import { ShopHeaderNav } from "@/components/marketplace/shop-header-nav";
+import { PublicHeader } from "@/components/marketplace/public-header";
 import { UserRole } from "@/types/enums";
 
 type MeUser = {
@@ -108,20 +108,26 @@ export default function ProductDetailPage() {
 
   if (error) {
     return (
-      <main className="mx-auto max-w-3xl px-4 py-10">
-        <p className="text-red-800">{error}</p>
-        <a href="/shop" className="mt-4 inline-block text-sm text-orange-700 underline">
-          Back to shop
-        </a>
-      </main>
+      <div className="min-h-screen bg-stone-50">
+        {!isPreviewMode ? <PublicHeader /> : null}
+        <main className="mx-auto max-w-3xl px-4 py-10">
+          <p className="text-red-800">{error}</p>
+          <a href="/shop" className="mt-4 inline-block text-sm text-orange-700 underline">
+            Back to shop
+          </a>
+        </main>
+      </div>
     );
   }
 
   if (!product) {
     return (
-      <main className="mx-auto max-w-3xl px-4 py-10">
-        <p className="text-gray-600">Loading…</p>
-      </main>
+      <div className="min-h-screen bg-stone-50">
+        {!isPreviewMode ? <PublicHeader /> : null}
+        <main className="mx-auto max-w-3xl px-4 py-10">
+          <p className="text-gray-600">Loading…</p>
+        </main>
+      </div>
     );
   }
 
@@ -129,22 +135,23 @@ export default function ProductDetailPage() {
   const selected = product.variants.find((v) => v.id === variantId);
 
   return (
-    <main className="relative mx-auto max-w-4xl px-4 py-10">
-      {toast ? (
-        <div
-          role="status"
-          aria-live="polite"
-          className="fixed bottom-6 left-1/2 z-50 max-w-md -translate-x-1/2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-center text-sm font-medium text-amber-950 shadow-lg"
-        >
-          {toast}
+    <div className="min-h-screen bg-stone-50">
+      {!isPreviewMode ? <PublicHeader /> : null}
+      <main className="relative mx-auto max-w-4xl px-4 py-10">
+        {toast ? (
+          <div
+            role="status"
+            aria-live="polite"
+            className="fixed bottom-6 left-1/2 z-50 max-w-md -translate-x-1/2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-center text-sm font-medium text-amber-950 shadow-lg"
+          >
+            {toast}
+          </div>
+        ) : null}
+        <div className="flex flex-wrap items-center gap-4">
+          <a href={isPreviewMode ? "/vendor/products" : "/shop"} className="text-sm text-orange-700 underline">
+            {isPreviewMode ? "← Back to vendor products" : "← Back to shop"}
+          </a>
         </div>
-      ) : null}
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <a href={isPreviewMode ? "/vendor/products" : "/shop"} className="text-sm text-orange-700 underline">
-          {isPreviewMode ? "← Back to vendor products" : "← Back to shop"}
-        </a>
-        {!isPreviewMode ? <ShopHeaderNav /> : null}
-      </div>
       {isPreviewMode ? (
         <div className="mt-4 rounded-md border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
           <p className="font-medium">Preview mode - this is how customers see your product</p>
@@ -237,6 +244,7 @@ export default function ProductDetailPage() {
           ) : null}
         </div>
       </div>
-    </main>
+      </main>
+    </div>
   );
 }

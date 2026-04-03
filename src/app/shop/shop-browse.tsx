@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { PublicHeader } from "@/components/marketplace/public-header";
 import { ProductCard, type ProductCardData } from "@/components/product-card";
-import { ShopHeaderNav } from "@/components/marketplace/shop-header-nav";
 
 type CategoryNode = {
   id: string;
@@ -136,13 +136,12 @@ export default function ShopBrowse({ initialCategorySlug, initialQ }: Props) {
   }, [categories, categorySlug]);
 
   return (
-    <main className="mx-auto max-w-6xl px-4 py-10">
-      <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold text-gray-900">Shop</h1>
-          <p className="mt-1 text-sm text-gray-600">Browse by category or search active listings from approved sellers.</p>
-        </div>
-        <ShopHeaderNav />
+    <div className="min-h-screen bg-stone-50">
+      <PublicHeader />
+      <main className="mx-auto max-w-6xl px-4 py-10">
+      <div className="mb-8">
+        <h1 className="text-2xl font-semibold text-gray-900">Shop</h1>
+        <p className="mt-1 text-sm text-gray-600">Browse by category or search active listings from approved sellers.</p>
       </div>
 
       <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-start">
@@ -212,7 +211,8 @@ export default function ShopBrowse({ initialCategorySlug, initialQ }: Props) {
           ) : null}
         </div>
       </div>
-    </main>
+      </main>
+    </div>
   );
 }
 

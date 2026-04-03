@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { fetchApiJson, formatValidationDetails } from "@/lib/client/api-json";
 import { UserRole } from "@/types/enums";
 import { NonCustomerCartNotice } from "@/components/marketplace/non-customer-cart-notice";
+import { PublicHeader } from "@/components/marketplace/public-header";
 
 type Address = {
   id: string;
@@ -183,7 +184,9 @@ export default function CheckoutPage() {
 
   if (order?.status === "PAID") {
     return (
-      <main className="min-h-screen bg-stone-50/80">
+      <div className="min-h-screen bg-stone-50/80">
+        <PublicHeader />
+        <main>
         <div className="mx-auto max-w-lg px-4 py-12 sm:px-6 lg:px-8">
           <div className="rounded-2xl border border-gray-200 bg-white p-8 text-center shadow-sm">
             <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
@@ -201,12 +204,15 @@ export default function CheckoutPage() {
             </a>
           </div>
         </div>
-      </main>
+        </main>
+      </div>
     );
   }
 
   return (
-    <main className="min-h-screen bg-stone-50/80">
+    <div className="min-h-screen bg-stone-50/80">
+      <PublicHeader />
+      <main>
       <div className="mx-auto max-w-2xl px-4 py-8 sm:px-6 lg:px-8 lg:py-12">
         <div className="mb-8">
           <h1 className="text-2xl font-semibold tracking-tight text-gray-900 sm:text-3xl">Checkout</h1>
@@ -343,6 +349,7 @@ export default function CheckoutPage() {
           </a>
         ) : null}
       </div>
-    </main>
+      </main>
+    </div>
   );
 }

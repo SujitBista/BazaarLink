@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { PublicHeader } from "@/components/marketplace/public-header";
 import { ProductCard, type ProductCardData } from "@/components/product-card";
 
 type Props = {
@@ -70,36 +71,7 @@ export default function HomeContent({ initialQ }: Props) {
 
   return (
     <div className="min-h-screen bg-stone-50">
-      <header className="border-b border-stone-200/80 bg-white/90 backdrop-blur">
-        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-4 py-4">
-          <a href="/" className="text-lg font-semibold tracking-tight text-stone-900">
-            BazaarLink
-          </a>
-          <nav className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm">
-            <a href="/shop" className="font-medium text-orange-800 hover:text-orange-900">
-              Shop
-            </a>
-            <a href="/cart" className="text-stone-600 hover:text-stone-900">
-              Cart
-            </a>
-            <a href="/checkout" className="text-stone-600 hover:text-stone-900">
-              Checkout
-            </a>
-            <a href="/become-vendor" className="text-stone-600 hover:text-stone-900">
-              Sell
-            </a>
-            <a href="/orders" className="text-stone-600 hover:text-stone-900">
-              Orders
-            </a>
-            <a href="/vendor" className="text-stone-500 hover:text-stone-800">
-              Vendor
-            </a>
-            <a href="/admin/vendors" className="text-stone-500 hover:text-stone-800">
-              Admin
-            </a>
-          </nav>
-        </div>
-      </header>
+      <PublicHeader />
 
       <section className="border-b border-orange-100 bg-gradient-to-b from-orange-50 to-amber-50/40">
         <div className="mx-auto max-w-6xl px-4 pb-12 pt-10 sm:pb-16 sm:pt-14">

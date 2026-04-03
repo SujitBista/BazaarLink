@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { fetchApiJson } from "@/lib/client/api-json";
 import { UserRole } from "@/types/enums";
 import { NonCustomerCartNotice } from "@/components/marketplace/non-customer-cart-notice";
-import { ShopHeaderNav } from "@/components/marketplace/shop-header-nav";
+import { PublicHeader } from "@/components/marketplace/public-header";
 
 type CartItem = {
   id: string;
@@ -191,7 +191,9 @@ export default function CartPage() {
   const blockedNonCustomer = me !== undefined && me !== null && me.role !== UserRole.CUSTOMER;
 
   return (
-    <main className="min-h-screen bg-stone-50/80">
+    <div className="min-h-screen bg-stone-50/80">
+      <PublicHeader />
+      <main>
       <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-8 lg:py-12">
         <div className="mb-8 flex flex-col gap-4 sm:mb-10 sm:flex-row sm:items-end sm:justify-between">
           <div>
@@ -199,7 +201,6 @@ export default function CartPage() {
             <p className="mt-1 text-sm text-gray-500">Review items and proceed when you&apos;re ready.</p>
           </div>
           <div className="flex flex-wrap items-center justify-end gap-4">
-            <ShopHeaderNav />
             <a
               href="/shop"
               className="text-sm font-medium text-orange-700 transition hover:text-orange-800"
@@ -385,6 +386,7 @@ export default function CartPage() {
           </div>
         ) : null}
       </div>
-    </main>
+      </main>
+    </div>
   );
 }
