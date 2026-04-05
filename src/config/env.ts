@@ -32,3 +32,53 @@ export function getDefaultShippingAmount(): number {
   const n = Number(raw);
   return Number.isFinite(n) && n >= 0 ? n : 5;
 }
+
+/** Public site URL for eSewa return URLs (no trailing slash). */
+export function getPublicAppUrl(): string {
+  const raw = process.env.NEXT_PUBLIC_APP_URL?.trim();
+  if (raw) return raw.replace(/\/$/, "");
+  return "http://localhost:3000";
+}
+
+/**
+ * Simulated payment capture via POST /api/orders/:id/pay.
+ * Enabled when ENABLE_MOCK_PAYMENT is "true", or in development by default so eSewa UAT
+ * outages (e.g. reCAPTCHA quota on their login page) do not block local checkout.
+ * Set ENABLE_MOCK_PAYMENT=false to force the real eSewa redirect in dev.
+ */
+export function isMockPaymentEnabled(): boolean {
+  const explicit = process.env.ENABLE_MOCK_PAYMENT?.trim().toLowerCase();
+  if (explicit === "false" || explicit === "0") return false;
+  if (explicit === "true" || explicit === "1") return true;
+  return process.env.NODE_ENV === "development";
+}
+
+export function getEsewaProductCode(): string {
+  const v = process.env.ESEWA_PRODUCT_CODE?.trim();
+  if (!v) {
+    throw new Error("ESEWA_PRODUCT_CODE is not configured");
+  }
+  return v;
+}
+
+export function getEsewaSecretKey(): string {
+  const v = process.env.ESEWA_SECRET_KEY?.trim();
+  if (!v) {
+    throw new Error("ESEWA_SECRET_KEY is not configured");
+  }
+  return v;
+}
+
+/** eSewa payment form POST target (UAT or production). */
+export function getEsewaFormUrl(): string {
+  const v = process.env.ESEWA_FORM_URL?.trim();
+  if (v) return v;
+  return "https://rc-epay.esewa.com.np/api/epay/main/v2/form";
+}
+
+/** Status enquiry API base (no query string). */
+export function getEsewaStatusUrl(): string {
+  const v = process.env.ESEWA_STATUS_URL?.trim();
+  if (v) return v;
+  return "https://uat.esewa.com.np/api/epay/transaction/status/";
+}

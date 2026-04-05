@@ -1,5 +1,7 @@
 import { prisma } from "@/lib/db";
-import { OrderItemStatus, OrderStatus, ProductStatus, VendorStatus } from "@prisma/client";
+import type { Prisma } from "@prisma/client";
+import { OrderItemStatus, OrderStatus, PaymentStatus, ProductStatus, VendorStatus } from "@prisma/client";
+import type { OrderItem } from "@prisma/client";
 import { Decimal } from "@prisma/client/runtime/library";
 import { getAddressOwnedByUser } from "@/services/address";
 import { getCartWithItems } from "@/services/cart";
@@ -97,6 +99,143 @@ export async function checkoutCart(userId: string, addressId: string, shippingMe
   return order;
 }
 
+/**
+ * When the customer abandons payment (e.g. eSewa failure URL), cancel pending payments,
+ * restock reserved inventory, merge order lines back into the cart, and mark the order CANCELLED.
+ * Idempotent if the order is already CANCELLED.
+ */
+export async function releasePendingOrderAfterAbandonedPayment(orderId: string, userId: string) {
+  const order = await prisma.order.findFirst({
+    where: { id: orderId, userId },
+    include: { items: true },
+  });
+  if (!order) {
+    createServiceError("Order not found", 404, "ORDER_NOT_FOUND");
+  }
+  if (order.status === OrderStatus.CANCELLED) {
+    return;
+  }
+  if (order.status !== OrderStatus.PENDING) {
+    createServiceError("Order cannot be cancelled in current state", 409, "ORDER_NOT_CANCELLABLE");
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.payment.updateMany({
+      where: { orderId, status: PaymentStatus.PENDING },
+      data: { status: PaymentStatus.CANCELLED },
+    });
+
+    let cart = await tx.cart.findUnique({ where: { userId } });
+    if (!cart) {
+      cart = await tx.cart.create({ data: { userId } });
+    }
+
+    for (const line of order.items) {
+      await tx.productVariant.update({
+        where: { id: line.productVariantId },
+        data: { stock: { increment: line.quantity } },
+      });
+
+      const existing = await tx.cartItem.findUnique({
+        where: {
+          cartId_productVariantId: {
+            cartId: cart.id,
+            productVariantId: line.productVariantId,
+          },
+        },
+      });
+      if (existing) {
+        await tx.cartItem.update({
+          where: { id: existing.id },
+          data: { quantity: existing.quantity + line.quantity },
+        });
+      } else {
+        await tx.cartItem.create({
+          data: {
+            cartId: cart.id,
+            productVariantId: line.productVariantId,
+            quantity: line.quantity,
+          },
+        });
+      }
+    }
+
+    await tx.order.update({
+      where: { id: orderId },
+      data: { status: OrderStatus.CANCELLED },
+    });
+  });
+}
+
+/** Records commissions and moves order to PAID; idempotent if order is already PAID. */
+export async function finalizeOrderAsPaidInTransaction(
+  tx: Prisma.TransactionClient,
+  orderId: string,
+  items: OrderItem[]
+) {
+  const transitioned = await tx.order.updateMany({
+    where: { id: orderId, status: OrderStatus.PENDING },
+    data: { status: OrderStatus.PAID },
+  });
+  if (transitioned.count === 0) {
+    return;
+  }
+
+  await tx.orderItem.updateMany({
+    where: { orderId },
+    data: { status: OrderItemStatus.CONFIRMED },
+  });
+
+  const pct = getDefaultCommissionPercent();
+  const pctDec = toDecimal(pct);
+  const vendorTotals = new Map<string, Decimal>();
+  for (const item of items) {
+    const lineTotal = item.price.mul(item.quantity);
+    const prev = vendorTotals.get(item.vendorId) ?? new Decimal(0);
+    vendorTotals.set(item.vendorId, prev.add(lineTotal));
+  }
+
+  for (const [vendorId, gross] of Array.from(vendorTotals.entries())) {
+    const commissionAmount = gross.mul(pctDec).div(toDecimal(100));
+    await tx.commission.create({
+      data: {
+        orderId,
+        vendorId,
+        amount: commissionAmount,
+        percentage: pctDec,
+      },
+    });
+  }
+}
+
+export async function finalizeOrderAsPaid(orderId: string) {
+  const order = await prisma.order.findUnique({
+    where: { id: orderId },
+    include: { items: true },
+  });
+  if (!order) {
+    createServiceError("Order not found", 404, "ORDER_NOT_FOUND");
+  }
+  if (order.status === OrderStatus.PAID) {
+    return prisma.order.findUnique({
+      where: { id: orderId },
+      include: { items: true, commissions: true },
+    });
+  }
+  if (order.status !== OrderStatus.PENDING) {
+    createServiceError("Order cannot be paid in current state", 409, "INVALID_ORDER_STATE");
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await finalizeOrderAsPaidInTransaction(tx, orderId, order.items);
+  });
+
+  return prisma.order.findUnique({
+    where: { id: orderId },
+    include: { items: true, commissions: true },
+  });
+}
+
 export async function confirmOrderPayment(orderId: string, userId: string) {
   const order = await prisma.order.findFirst({
     where: { id: orderId, userId },
@@ -115,43 +254,7 @@ export async function confirmOrderPayment(orderId: string, userId: string) {
     createServiceError("Order cannot be paid in current state", 409, "INVALID_ORDER_STATE");
   }
 
-  const pct = getDefaultCommissionPercent();
-  const pctDec = toDecimal(pct);
-
-  await prisma.$transaction(async (tx) => {
-    await tx.order.update({
-      where: { id: orderId },
-      data: { status: OrderStatus.PAID },
-    });
-    await tx.orderItem.updateMany({
-      where: { orderId },
-      data: { status: OrderItemStatus.CONFIRMED },
-    });
-
-    const vendorTotals = new Map<string, Decimal>();
-    for (const item of order.items) {
-      const lineTotal = item.price.mul(item.quantity);
-      const prev = vendorTotals.get(item.vendorId) ?? new Decimal(0);
-      vendorTotals.set(item.vendorId, prev.add(lineTotal));
-    }
-
-    for (const [vendorId, gross] of Array.from(vendorTotals.entries())) {
-      const commissionAmount = gross.mul(pctDec).div(toDecimal(100));
-      await tx.commission.create({
-        data: {
-          orderId,
-          vendorId,
-          amount: commissionAmount,
-          percentage: pctDec,
-        },
-      });
-    }
-  });
-
-  return prisma.order.findUnique({
-    where: { id: orderId },
-    include: { items: true, commissions: true },
-  });
+  return finalizeOrderAsPaid(orderId);
 }
 
 export async function listOrdersForCustomer(userId: string) {

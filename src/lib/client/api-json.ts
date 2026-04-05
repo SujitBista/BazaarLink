@@ -13,7 +13,17 @@ export type ApiResult<T> =
   | { ok: false; status: number; error: string; code?: string; details?: unknown };
 
 export async function fetchApiJson<T>(input: RequestInfo | URL, init?: RequestInit): Promise<ApiResult<T>> {
-  const res = await fetch(input, { credentials: "include", ...init });
+  let res: Response;
+  try {
+    res = await fetch(input, { credentials: "include", ...init });
+  } catch (e) {
+    const raw = e instanceof Error ? e.message : "Network error";
+    const error =
+      raw === "Failed to fetch" || raw === "fetch failed"
+        ? "Could not reach the server. Check your connection and try again."
+        : raw;
+    return { ok: false, status: 0, error };
+  }
   let json: unknown = null;
   try {
     json = await res.json();

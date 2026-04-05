@@ -12,7 +12,10 @@ export async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
 
   const isCustomerMarketplacePage =
-    pathname === "/cart" || pathname === "/checkout" || pathname === "/orders";
+    pathname === "/cart" ||
+    pathname.startsWith("/checkout") ||
+    pathname === "/orders" ||
+    pathname.startsWith("/orders/");
 
   if (isCustomerMarketplacePage) {
     const token = request.cookies.get(COOKIE_NAME)?.value;
@@ -47,5 +50,13 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/api/admin/:path*", "/api/vendors/:path*", "/cart", "/checkout", "/orders"],
+  matcher: [
+    "/api/admin/:path*",
+    "/api/vendors/:path*",
+    "/cart",
+    "/checkout",
+    "/checkout/:path*",
+    "/orders",
+    "/orders/:path*",
+  ],
 };

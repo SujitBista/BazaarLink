@@ -1,8 +1,7 @@
 // BazaarLink — MVP subset schema (per docs; not the full domain model).
 // Source: docs/database/schema-detailed.md, docs/database/enums.md,
 // docs/implementation/phase1-plan.md, docs/architecture/open-decisions.md
-// Deferred (intentionally omitted from Prisma for now): Cart, CartItem, Payment,
-// Refund, Payout, Review. Wishlist also omitted.
+// Deferred (intentionally omitted from Prisma for now): Refund, Payout, Review. Wishlist also omitted.
 
 generator client {
   provider = "prisma-client-js"
@@ -52,6 +51,19 @@ enum OrderStatus {
   SHIPPED
   DELIVERED
   CANCELLED
+}
+
+enum PaymentProvider {
+  ESEWA
+}
+
+// Aligns with docs/database/enums.md; adds CANCELLED for abandoned eSewa sessions.
+enum PaymentStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+  REFUNDED
 }
 
 enum OrderItemStatus {
@@ -302,9 +314,29 @@ model Order {
   shippingAddress Address @relation("ShippingAddress", fields: [shippingAddressId], references: [id], onDelete: Restrict)
   items           OrderItem[]
   commissions     Commission[]
+  payments        Payment[]
 
   @@index([userId])
   @@index([status])
+}
+
+model Payment {
+  id               String          @id @default(cuid())
+  orderId          String          @map("order_id")
+  provider         PaymentProvider @default(ESEWA)
+  amount           Decimal         @map("amount") @db.Decimal(10, 2)
+  status           PaymentStatus   @default(PENDING)
+  // eSewa transaction_uuid; unique for idempotency.
+  transactionUuid  String          @unique @map("transaction_uuid")
+  // Provider reference after success (e.g. eSewa transaction_code).
+  externalId       String?         @map("external_id")
+  createdAt        DateTime        @default(now()) @map("created_at")
+  updatedAt        DateTime        @updatedAt @map("updated_at")
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Restrict)
+
+  @@index([orderId])
+  @@map("payments")
 }
 
 model OrderItem {

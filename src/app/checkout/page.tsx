@@ -16,6 +16,58 @@ type Address = {
 
 type Order = { id: string; status: string; totalAmount: string };
 
+type PaymentOptions = {
+  mockPaymentEnabled: boolean;
+};
+
+type PaymentInfo = {
+  id: string;
+  status: string;
+  amount: string;
+  transactionUuid: string;
+  externalId: string | null;
+  createdAt: string;
+} | null;
+
+function formatMoney(amount: string | number) {
+  const n = typeof amount === "string" ? Number.parseFloat(amount) : amount;
+  if (!Number.isFinite(n)) return "$0.00";
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(n);
+}
+
+function paymentStatusLabel(status: string | undefined): string {
+  switch (status) {
+    case "PENDING":
+      return "Awaiting payment";
+    case "SUCCEEDED":
+      return "Paid";
+    case "FAILED":
+      return "Failed";
+    case "CANCELLED":
+      return "Cancelled";
+    default:
+      return "Not started";
+  }
+}
+
+function submitPostForm(action: string, fields: Record<string, string>) {
+  const form = document.createElement("form");
+  form.method = "POST";
+  form.action = action;
+  form.enctype = "application/x-www-form-urlencoded";
+  form.acceptCharset = "UTF-8";
+  form.style.display = "none";
+  for (const [name, value] of Object.entries(fields)) {
+    const input = document.createElement("input");
+    input.type = "hidden";
+    input.name = name;
+    input.value = value;
+    form.appendChild(input);
+  }
+  document.body.appendChild(form);
+  form.submit();
+}
+
 type MeUser = {
   id: string;
   email: string;
@@ -74,6 +126,8 @@ export default function CheckoutPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [order, setOrder] = useState<Order | null>(null);
+  const [paymentInfo, setPaymentInfo] = useState<PaymentInfo | undefined>(undefined);
+  const [paymentOptions, setPaymentOptions] = useState<PaymentOptions | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   const [line1, setLine1] = useState("");
@@ -164,10 +218,57 @@ export default function CheckoutPage() {
       setError(res.error);
       return;
     }
-    setOrder(res.data.order);
+    setOrder({
+      id: res.data.order.id,
+      status: res.data.order.status,
+      totalAmount: String(res.data.order.totalAmount),
+    });
   }
 
-  async function doPay() {
+  const loadPaymentInfo = useCallback(async (orderId: string) => {
+    const res = await fetchApiJson<{
+      order: { id: string; status: string; totalAmount: string };
+      payment: PaymentInfo;
+    }>(`/api/orders/${orderId}/payment`);
+    if (!res.ok) return;
+    setPaymentInfo(res.data.payment);
+    setOrder((prev) =>
+      prev && prev.id === orderId
+        ? { ...prev, status: res.data.order.status, totalAmount: res.data.order.totalAmount }
+        : prev,
+    );
+  }, []);
+
+  useEffect(() => {
+    if (!order?.id) return;
+    void loadPaymentInfo(order.id);
+  }, [order?.id, loadPaymentInfo]);
+
+  useEffect(() => {
+    if (!order) return;
+    void (async () => {
+      const res = await fetchApiJson<PaymentOptions>("/api/payments/options");
+      if (res.ok) setPaymentOptions(res.data);
+    })();
+  }, [order?.id]);
+
+  async function payWithEsewa() {
+    if (!order) return;
+    setSubmitting(true);
+    setError(null);
+    const res = await fetchApiJson<{
+      formAction: string;
+      fields: Record<string, string>;
+    }>(`/api/orders/${order.id}/payments/esewa/init`, { method: "POST" });
+    if (!res.ok) {
+      setSubmitting(false);
+      setError(res.error);
+      return;
+    }
+    submitPostForm(res.data.formAction, res.data.fields);
+  }
+
+  async function completeMockPayment() {
     if (!order) return;
     setSubmitting(true);
     setError(null);
@@ -177,7 +278,11 @@ export default function CheckoutPage() {
       setError(res.error);
       return;
     }
-    setOrder(res.data.order);
+    setOrder({
+      id: res.data.order.id,
+      status: res.data.order.status,
+      totalAmount: String(res.data.order.totalAmount),
+    });
   }
 
   const blockedNonCustomer = me !== undefined && me !== null && me.role !== UserRole.CUSTOMER;
@@ -314,29 +419,111 @@ export default function CheckoutPage() {
             </div>
           </>
         ) : !blockedNonCustomer && order ? (
-          <section className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm sm:p-8">
-            <h2 className="text-base font-semibold text-gray-900">Payment</h2>
-            <p className="mt-3 text-sm text-gray-600">
-              Order <span className="font-mono text-xs text-gray-800">{order.id}</span>
-              <span className="mx-2 text-gray-300">·</span>
-              Total{" "}
-              <span className="font-semibold text-gray-900">
-                {new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(
-                  Number.parseFloat(order.totalAmount) || 0,
-                )}
-              </span>
-              <span className="mx-2 text-gray-300">·</span>
-              Status {order.status}
-            </p>
-            <button
-              type="button"
-              disabled={submitting}
-              onClick={() => void doPay()}
-              className="mt-6 flex w-full items-center justify-center rounded-xl bg-orange-600 px-4 py-4 text-base font-semibold text-white shadow-md transition hover:bg-orange-700 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {submitting ? "Processing…" : "Simulate payment"}
-            </button>
-            <p className="mt-3 text-xs text-gray-500">Dev: simulates PSP capture and records commissions.</p>
+          <section className="overflow-hidden rounded-2xl border border-slate-200/90 bg-gradient-to-b from-white to-slate-50/90 shadow-[0_1px_0_rgba(15,23,42,0.06),0_12px_32px_rgba(15,23,42,0.06)] sm:p-8">
+            <div className="border-b border-slate-100 bg-white/80 px-6 py-5 sm:px-8">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-lg font-semibold tracking-tight text-slate-900">Pay securely</h2>
+                  <p className="mt-1 text-sm text-slate-600">
+                    You will be redirected to eSewa to complete your payment securely.
+                  </p>
+                </div>
+                <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-800">
+                  eSewa
+                </span>
+              </div>
+            </div>
+
+            <div className="space-y-5 px-6 py-6 sm:px-8">
+              <div className="rounded-xl border border-slate-100 bg-slate-50/80 p-4">
+                <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Payment method</p>
+                <p className="mt-2 text-sm font-semibold text-slate-900">eSewa</p>
+                <p className="mt-1 text-xs text-slate-600">Mobile wallet · selected for this order</p>
+              </div>
+
+              <div className="rounded-xl border border-amber-100 bg-amber-50/90 p-4 text-left">
+                <p className="text-xs font-semibold uppercase tracking-wide text-amber-900/80">eSewa test (EPAYTEST)</p>
+                <ul className="mt-2 list-disc space-y-1 pl-4 text-xs text-amber-950/90">
+                  <li>
+                    Use <span className="font-mono font-semibold">one</span> test ID, e.g.{" "}
+                    <span className="font-mono">9806800001</span> — not the whole &quot;9806800001/2/3/4/5&quot; line from
+                    the docs.
+                  </li>
+                  <li>Password <span className="font-mono">Nepal@123</span>, MPIN <span className="font-mono">1122</span>;</li>
+                  <li>
+                    If login fails and reCAPTCHA shows a quota message, that is eSewa&apos;s sandbox (not this shop).
+                    In local development you can use <strong>Complete payment (local simulation)</strong> below
+                    instead, or try again later.
+                  </li>
+                </ul>
+              </div>
+
+              {paymentOptions?.mockPaymentEnabled ? (
+                <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4 text-left">
+                  <p className="text-xs font-semibold text-slate-800">Local simulation (development)</p>
+                  <p className="mt-1 text-xs text-slate-600">
+                    On by default in <code className="rounded bg-slate-200/80 px-1">next dev</code>; set{" "}
+                    <code className="rounded bg-slate-200/80 px-1">ENABLE_MOCK_PAYMENT=false</code> to require real
+                    eSewa.
+                  </p>
+                  <button
+                    type="button"
+                    disabled={
+                      submitting ||
+                      order.status !== "PENDING" ||
+                      paymentInfo === undefined ||
+                      paymentInfo?.status === "SUCCEEDED"
+                    }
+                    onClick={() => void completeMockPayment()}
+                    className="mt-3 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-semibold text-slate-800 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {submitting ? "Processing…" : "Complete payment (local simulation)"}
+                  </button>
+                </div>
+              ) : null}
+
+              <dl className="grid gap-4 sm:grid-cols-2">
+                <div className="rounded-xl border border-slate-100 bg-white p-4 shadow-sm">
+                  <dt className="text-xs font-medium text-slate-500">Total due</dt>
+                  <dd className="mt-1 text-lg font-semibold tabular-nums text-slate-900">
+                    {formatMoney(order.totalAmount)}
+                  </dd>
+                </div>
+                <div className="rounded-xl border border-slate-100 bg-white p-4 shadow-sm">
+                  <dt className="text-xs font-medium text-slate-500">Payment status</dt>
+                  <dd className="mt-1 text-sm font-semibold text-slate-900">
+                    {paymentInfo === undefined ? "Loading…" : paymentStatusLabel(paymentInfo?.status)}
+                  </dd>
+                </div>
+                <div className="sm:col-span-2 rounded-xl border border-slate-100 bg-white p-4 shadow-sm">
+                  <dt className="text-xs font-medium text-slate-500">Order reference</dt>
+                  <dd className="mt-1 break-all font-mono text-xs text-slate-800">{order.id}</dd>
+                </div>
+                {paymentInfo?.transactionUuid ? (
+                  <div className="sm:col-span-2 rounded-xl border border-slate-100 bg-white p-4 shadow-sm">
+                    <dt className="text-xs font-medium text-slate-500">eSewa transaction reference</dt>
+                    <dd className="mt-1 break-all font-mono text-xs text-slate-800">{paymentInfo.transactionUuid}</dd>
+                  </div>
+                ) : null}
+              </dl>
+
+              <button
+                type="button"
+                disabled={
+                  submitting ||
+                  order.status !== "PENDING" ||
+                  paymentInfo === undefined ||
+                  paymentInfo?.status === "SUCCEEDED"
+                }
+                onClick={() => void payWithEsewa()}
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-orange-600 to-orange-500 px-4 py-4 text-base font-semibold text-white shadow-md transition hover:from-orange-700 hover:to-orange-600 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {submitting ? "Redirecting to eSewa…" : "Pay with eSewa"}
+              </button>
+              <p className="text-center text-xs text-slate-500">
+                After paying, you&apos;ll return here briefly while we confirm your payment with eSewa.
+              </p>
+            </div>
           </section>
         ) : null}
 
